@@ -9,8 +9,7 @@ import { useLoadSession } from "../api/useLoadSession";
 import IdentityPicker, {
   type IdentityValue,
 } from "../components/IdentityPicker";
-import { buildStrengthProfile } from "../content/strengths_persona";
-import type { StrengthProfile } from "../../../types/api";
+import type { Demographics } from "../../../types/api";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -61,7 +60,6 @@ type SessionDTO = {
 };
 
 const LS_KEY = "coach_session_id";
-const LS_IDENTITY_KEY = "coach_identity";
 const ANSWER_LABEL: Record<
   "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO",
   string
@@ -73,94 +71,20 @@ const ANSWER_LABEL: Record<
   NO: "いいえ",
 };
 
-function StrengthPersonaPreview({ persona }: { persona?: StrengthProfile }) {
-  if (!persona) return null;
-  return (
-    <div className="border rounded p-3 bg-white">
-      {persona.summarizedTraits?.length > 0 && (
-        <>
-          <div className="text-sm font-semibold mb-1">特徴（サマリ）</div>
-          <ul className="list-disc pl-5 mb-2">
-            {persona.summarizedTraits.map((t, i) => (
-              <li key={`traits-${i}`}>{t}</li>
-            ))}
-          </ul>
-        </>
-      )}
-      {persona.summarizedManagement?.length > 0 && (
-        <>
-          <div className="text-sm font-semibold mb-1">
-            マネジメント（サマリ）
-          </div>
-          <ul className="list-disc pl-5 mb-2">
-            {persona.summarizedManagement.map((m, i) => (
-              <li key={`mgmt-${i}`}>{m}</li>
-            ))}
-          </ul>
-        </>
-      )}
-      {persona.perTheme?.length > 0 && (
-        <>
-          <div className="text-sm font-semibold mb-1">資質ごとのヒント</div>
-          <div className="grid md:grid-cols-2 gap-3">
-            {persona.perTheme.map((p, idx) => (
-              <div key={`${p.theme}-${idx}`} className="border rounded p-2">
-                <div className="font-semibold mb-1">{p.theme}</div>
-                {p.traits?.length > 0 && (
-                  <>
-                    <div className="text-xs font-medium">特徴</div>
-                    <ul className="list-disc pl-5 text-sm mb-1">
-                      {p.traits.map((t, i) => (
-                        <li key={`${p.theme}-t-${i}`}>{t}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                {p.management?.length > 0 && (
-                  <>
-                    <div className="text-xs font-medium">マネジメント</div>
-                    <ul className="list-disc pl-5 text-sm">
-                      {p.management.map((m, i) => (
-                        <li key={`${p.theme}-m-${i}`}>{m}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
+function identityToDemographics(v: IdentityValue): Demographics {
+  return {
+    // IdentityPicker は null を使うので、API には undefined で渡す
+    ageRange: v.ageRange ?? undefined,
+    gender: v.gender ? String(v.gender) : undefined, // API 側は string 想定
+    hometown: v.hometown?.trim() ? v.hometown.trim() : undefined,
+  };
 }
 
 export default function SessionPage() {
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
   const firstAnswerBtnRef = useRef<HTMLButtonElement | null>(null);
   const showToast = useToast();
 
-  const [context, setContext] = useState<"人間関係" | "仕事" | "プライベート">(
-    "仕事"
-  );
-
-  // ▼ 基本属性（任意）
-  const [identity, setIdentity] = useState<IdentityValue>(() => {
-    try {
-      const raw = localStorage.getItem(LS_IDENTITY_KEY);
-      return raw ? (JSON.parse(raw) as IdentityValue) : {};
-    } catch {
-      return {};
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_IDENTITY_KEY, JSON.stringify(identity));
-    } catch {
-      /* ignore */
-    }
-  }, [identity]);
-
+  // Top5
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<StrengthTheme[]>([]);
   const canAddMore = selected.length < 5;
@@ -170,11 +94,12 @@ export default function SessionPage() {
     return STRENGTH_THEMES.filter((t) => t.includes(q));
   }, [query]);
 
-  // Top5 → プレビュー（セッション開始前の即時計算）
-  const personaPreview = useMemo<StrengthProfile | undefined>(() => {
-    if (!selected.length) return undefined;
-    return buildStrengthProfile(selected);
-  }, [selected]);
+  // デモグラ（任意）
+  const [identity, setIdentity] = useState<IdentityValue>({
+    ageRange: null,
+    gender: null,
+    hometown: "",
+  });
 
   const create = useCreateSession();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -215,30 +140,29 @@ export default function SessionPage() {
     localStorage.setItem(LS_KEY, restored.id);
   }, [restored]);
 
-  // セッション開始
+  // セッション開始（悩み領域／会話ログは送らない）
   const onStart = async () => {
-    const body = taRef.current?.value || "";
-    // 属性メタを1行付記（任意・サーバ変更なし）
-    const meta = [
-      identity.ageBand ? `年齢帯:${identity.ageBand}` : null,
-      identity.gender ? `性別:${identity.gender}` : null,
-      identity.region
-        ? `出身:${identity.region}${
-            identity.prefecture ? `(${identity.prefecture})` : ""
-          }`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" / ");
-    const transcript = meta ? `【属性】${meta}\n${body}` : body;
+    // サーバは transcript>=20 文字必須なので安全なダミーを生成
+    const fallback =
+      "（自動生成ログ）Top5と基本属性から初期セッションを開始します。";
+    const autoTranscript =
+      selected.length > 0
+        ? `Top5: ${selected.join("、")} に基づく初期セッションメモです。`
+        : fallback;
+    const transcript = autoTranscript.length >= 20 ? autoTranscript : fallback;
+
+    // 空オブジェクトは送らない
+    const d = identityToDemographics(identity);
+    const demographics = d.ageRange || d.gender || d.hometown ? d : undefined;
 
     setT0(performance.now());
     try {
       const s = await create.mutateAsync({
-        transcript,
-        context,
+        transcript, // 必須を満たすために自動送信
+        // context は送らない（サーバ側が "仕事" にデフォルト）
         strengths_top5: selected.length ? selected : undefined,
-      });
+        demographics,
+      } as any);
       setSessionId(s.id);
       setSessionData(s as any);
       localStorage.setItem(LS_KEY, s.id);
@@ -379,6 +303,7 @@ export default function SessionPage() {
     setTimeToFirst(null);
     setSelected([]);
     setQuery("");
+    setIdentity({ ageRange: null, gender: null, hometown: "" });
     create.reset();
     advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
@@ -405,7 +330,6 @@ export default function SessionPage() {
       await navigator.clipboard.writeText(url);
       showToast("共有リンクをコピーしました", { type: "success" });
     } catch {
-      // クリップボード不可環境のフォールバック
       prompt("以下のURLを手動でコピーしてください。", url);
     }
   };
@@ -488,40 +412,20 @@ export default function SessionPage() {
         <span title="Top5→軽い事前確率→質問で更新→確信度で確定">ℹ️</span>
       </h1>
 
-      {/* ===== 初期入力 ===== */}
+      {/* ===== 初期入力（悩み領域／会話ログは削除） ===== */}
       {!sessionId && (
         <div className="space-y-3" aria-busy={create.isPending}>
-          <fieldset className="space-y-2">
-            <legend className="font-medium">いま一番の悩み領域</legend>
-            <div className="flex gap-4">
-              {(["人間関係", "仕事", "プライベート"] as const).map((v) => (
-                <label key={v} className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="ctx"
-                    checked={context === v}
-                    onChange={() => setContext(v)}
-                  />
-                  <span>{v}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
           {/* 基本属性（任意） */}
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold">基本属性（任意）</h2>
+            <h2 className="font-medium">基本属性（任意）</h2>
             <IdentityPicker value={identity} onChange={setIdentity} />
-            <p className="text-xs text-gray-500">
-              セッション開始時、会話ログの冒頭に「【属性】…」として1行だけ付記されます（サーバ変更なし）
-            </p>
           </section>
 
           {/* Top5 選択 */}
           <div className="space-y-2">
             <div className="flex items-end justify-between gap-2">
               <label className="font-medium">
-                ストレングスTop5（最大5つまで選択・任意）
+                ストレングスTop5（最大5つまで・任意）
               </label>
               <div className="text-sm text-gray-600">
                 {selected.length}/5 選択
@@ -578,31 +482,6 @@ export default function SessionPage() {
             )}
           </div>
 
-          {/* ▼ 即時プレビュー：ストレングス（ベータ） */}
-          {selected.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-xl font-semibold">ストレングス（ベータ）</h2>
-              <StrengthPersonaPreview persona={personaPreview} />
-              <p className="text-xs text-gray-500">
-                ※
-                Top5の選択に応じて自動更新されます（セッション開始前のプレビュー）
-              </p>
-            </section>
-          )}
-
-          {/* ログ */}
-          <div className="space-y-1">
-            <label htmlFor="transcript" className="font-medium">
-              会話ログ（最低20文字）
-            </label>
-            <textarea
-              id="transcript"
-              ref={taRef}
-              className="w-full h-40 rounded border p-2"
-              placeholder="上司との関係で悩んでおり…（ここにログを貼付）"
-            />
-          </div>
-
           <div className="flex gap-2">
             <button
               aria-label="セッション開始"
@@ -634,7 +513,6 @@ export default function SessionPage() {
           <div className="text-sm text-gray-600">
             セッションID: <code>{sessionId}</code>
             {timeToFirst !== null && <span> / 初回出力: {timeToFirst} ms</span>}
-            {/* ★ 追加：共有ボタン */}
             <button
               className="ml-2 px-2 py-1 border rounded text-xs hover:bg-gray-50"
               onClick={handleShare}

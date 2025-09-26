@@ -446,5 +446,165 @@
     },
     "version": 1,
     "status": "draft"
+  },
+
+  {
+    "id": "Q31",
+    "text": "不確実でも3案を比較して素早く方向を決められますか？",
+    "tags": ["意思決定", "不確実性耐性", "比較検討"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.9,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.7,
+      "TYPE_STABILITY": 0.45
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "STRATEGY vs STABILITY の弁別を強化"
+  },
+
+  {
+    "id": "Q32",
+    "text": "直感よりもデータを優先して結論を出しますか？",
+    "tags": ["分析", "根拠重視"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.6,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.9,
+      "TYPE_STABILITY": 0.6
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "ANALYTICAL を強く押し上げる"
+  },
+
+  {
+    "id": "Q33",
+    "text": "期日が曖昧でも自分で締切を設定して進めますか？",
+    "tags": ["自己管理", "段取り", "自律"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.65,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.92,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.65
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "EXECUTION を明確化"
+  },
+
+  {
+    "id": "Q34",
+    "text": "場が張りつめた時に、まず安心できるルールづくりを優先しますか？",
+    "tags": ["安定志向", "合意形成"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.45,
+      "TYPE_EMPATHY": 0.7,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.9
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "STABILITY を強く狙う"
+  },
+
+  {
+    "id": "Q35",
+    "text": "議論では、相手の立場ごとに伝え方を変えるほうですか？",
+    "tags": ["対人配慮", "伝達調整"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.9,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.7
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "EMPATHY の主力追加"
+  },
+
+  {
+    "id": "Q36",
+    "text": "ゼロから枠組みを作るより、既存の型に当てはめる方が得意ですか？",
+    "tags": ["原点思考", "型適用"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.45,
+      "TYPE_EMPATHY": 0.55,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.75,
+      "TYPE_STABILITY": 0.85
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "STRATEGY(0→1) と STABILITY(1→10)の対比"
+  },
+
+  {
+    "id": "Q37",
+    "text": "会議の冒頭で目的・判断基準・論点を整理して提示しますか？",
+    "tags": ["構造化", "ファシリ", "意思決定"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.88,
+      "TYPE_EMPATHY": 0.6,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.75,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "STRATEGY/ANALYTICAL を同時に押し上げる弁別項目"
+  },
+
+  {
+    "id": "Q38",
+    "text": "衝突時に第三の案をつくり、双方の納得点を探りますか？",
+    "tags": ["調整", "創造的妥協"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.65,
+      "TYPE_EMPATHY": 0.88,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.6,
+      "TYPE_STABILITY": 0.75
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "EMPATHY × STABILITY の橋渡し"
+  },
+
+  {
+    "id": "Q39",
+    "text": "最小アウトプットを1日以内に出し、反応を見て直しますか？",
+    "tags": ["実行", "イテレーション", "迅速性"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.65,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.9,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.5
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "EXECUTION を速さ側で強調"
+  },
+
+  {
+    "id": "Q40",
+    "text": "新しい技術や方法に触れると、まず試作して学びますか？",
+    "tags": ["学習", "仮説検証", "適応"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.75,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.65,
+      "TYPE_ANALYTICAL": 0.85,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "ANALYTICAL × 実験志向で差をつける"
   }
 ]

@@ -4,6 +4,7 @@ import type {
   LoopFetch,
   Answer5,
   ApiError,
+  Demographics,
 } from "../types/api";
 
 const API_MODE = (import.meta as any).env?.VITE_API_MODE ?? "mock"; // 'mock' | 'real'
@@ -67,6 +68,7 @@ export const api = {
       transcript: string;
       context?: "人間関係" | "仕事" | "プライベート";
       strengths_top5?: StrengthTheme[];
+      demographics?: Demographics; // ★ 追加
     }) {
       return request<Session>("/api/sessions", {
         method: "POST",

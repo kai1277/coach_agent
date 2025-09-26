@@ -24,11 +24,11 @@ export type Question = {
 
 // ※テストは Answer5 を使って尤度合成する前提
 export const ANSWER_WEIGHT: Record<Answer5, number> = {
-  YES: 0.9,
-  PROB_YES: 0.7,
+  YES: 0.95,
+  PROB_YES: 0.75,
   UNKNOWN: 0.5,
-  PROB_NO: 0.3,
-  NO: 0.1,
+  PROB_NO: 0.25,
+  NO: 0.05,
 };
 
 export const clamp = (v: number, lo: number, hi: number) =>
@@ -55,10 +55,19 @@ export const entropy = (p: Record<string, number>) => {
   return h;
 };
 
+const SHARPEN = 1.6;
+
 export function likelihood(a: Answer5, yesProb: number) {
   const w = ANSWER_WEIGHT[a];
-  // 数値安定性のために軽くクリップ
-  return clamp(w * yesProb + (1 - w) * (1 - yesProb), 1e-3, 1 - 1e-3);
+  // 基本の線形混合
+  const r = clamp(w * yesProb + (1 - w) * (1 - yesProb), 1e-6, 1 - 1e-6);
+
+  // ★シャープ化（r をロジスティック正規化で引き伸ばす）
+  //   直感：r が 0.5 から離れているほど、さらに離す
+  const p = Math.pow(r, SHARPEN);
+  const q = Math.pow(1 - r, SHARPEN);
+  const s = p / (p + q); // 正規化
+  return clamp(s, 1e-6, 1 - 1e-6);
 }
 
 /**

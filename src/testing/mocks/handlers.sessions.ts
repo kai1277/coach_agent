@@ -1,4 +1,3 @@
-// src/testing/mocks/handlers.sessions.ts
 import { http, HttpResponse, delay } from "msw";
 import { STRENGTH_THEMES } from "../../features/coach/constants/strengths";
 import {
@@ -13,6 +12,7 @@ import {
   TYPE_LABEL,
   TYPES,
   type Question,
+  normalize,
 } from "../../features/coach/engine/inference";
 import type { Answer5, TypeKey, SessionOutput } from "../../types/api";
 import { createLLMClient } from "../../server/services/llm";
@@ -25,6 +25,7 @@ const STRENGTH_SET = new Set<string>(STRENGTH_THEMES as readonly string[]);
 /**
  * Mock API
  * - 事前確率：文脈/Top5 から軽くバイアス（engine.priorFromContextAndTop5）
+ * - demographics(ageRange/gender/hometown) から微小バイアスを追加
  * - ベイズ更新（engine.recomputePosterior）
  * - 質問選択＝情報利得（engine.pickNextQuestion）
  * - しきい値/上限/minQuestions で確定（※初回は必ず1問出す）
@@ -35,6 +36,46 @@ const STRENGTH_SET = new Set<string>(STRENGTH_THEMES as readonly string[]);
 // ---- テスト判定 ----
 const env = (import.meta as any).env ?? {};
 const IS_TEST = env.MODE === "test" || !!env.VITEST;
+
+// ---- 軽微な demographics バイアス関数 ----
+type Demo =
+  | { ageRange?: string; gender?: string; hometown?: string }
+  | undefined;
+
+function biasWithDemographics(
+  p: Record<TypeKey, number>,
+  demographics: Demo
+): Record<TypeKey, number> {
+  if (!demographics) return p;
+  let m = { ...p };
+  const bump = (k: TypeKey, v: number) => (m[k] = (m[k] ?? 0) + v);
+
+  // 性別が入っているだけで、対人配慮/安定をほんの少し底上げ
+  if (demographics.gender) {
+    bump("TYPE_EMPATHY", 0.03);
+    bump("TYPE_STABILITY", 0.02);
+  }
+  // 年齢帯：若年→戦略/実行をわずかに、中高年→安定/探究をわずかに
+  if (demographics.ageRange) {
+    const age = demographics.ageRange;
+    if (/10|20/.test(age)) {
+      bump("TYPE_STRATEGY", 0.04);
+      bump("TYPE_EXECUTION", 0.03);
+    } else if (/40|50|60|以上/.test(age)) {
+      bump("TYPE_STABILITY", 0.04);
+      bump("TYPE_ANALYTICAL", 0.02);
+    } else {
+      bump("TYPE_ANALYTICAL", 0.02);
+    }
+  }
+  // 出身地ヒント
+  if (demographics.hometown) {
+    if (/地方|ローカル/.test(demographics.hometown)) {
+      bump("TYPE_STABILITY", 0.03);
+    }
+  }
+  return normalize(m);
+}
 
 // ---- セッション状態 ----
 type AnswerRec = {
@@ -54,6 +95,7 @@ type Session = {
   answers: AnswerRec[];
   askedCount: number;
   posterior: Record<TypeKey, number>;
+  demographics?: { ageRange?: string; gender?: string; hometown?: string };
 };
 
 const SESSIONS = new Map<string, Session>();
@@ -63,11 +105,13 @@ const uid = () =>
 
 // ---- posterior 再計算（engine を利用）----
 function recalc(sess: Session) {
-  const prior = priorFromContextAndTop5(
+  const prior0 = priorFromContextAndTop5(
     sess.context ?? null,
     sess.strengths_top5 ?? null,
     STRENGTH2TYPE
   );
+  const prior = biasWithDemographics(prior0, sess.demographics);
+
   const qa = sess.answers
     .map((r) => {
       const q = QUESTIONS.find((x) => x.id === r.questionId);
@@ -97,6 +141,7 @@ export const handlers = [
       transcript?: string;
       context?: string;
       strengths_top5?: unknown;
+      demographics?: { ageRange?: string; gender?: string; hometown?: string };
     };
     const transcript = (body.transcript ?? "").trim();
     if (transcript.length < 20) {
@@ -144,11 +189,12 @@ export const handlers = [
 
     const id = uid();
     const ctx = body.context ?? "仕事";
-    const prior = priorFromContextAndTop5(
+    const prior0 = priorFromContextAndTop5(
       ctx,
       strengths ?? null,
       STRENGTH2TYPE
     );
+    const prior = biasWithDemographics(prior0, body.demographics);
 
     // Top5 から StrengthProfile（persona）を1回だけ作る
     const persona =
@@ -185,6 +231,7 @@ export const handlers = [
       answers: [],
       askedCount: 0,
       posterior: prior,
+      demographics: body.demographics, // 保持（任意）
     };
 
     // LLM が有効ならサマリなどを生成して上書き（persona は維持/付け直し）

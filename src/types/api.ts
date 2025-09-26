@@ -62,13 +62,20 @@ export type StrengthProfile = {
   summarizedManagement: string[];
 };
 
+// ★ 追加: デモグラ（年齢帯/性別/出身地）— 送信は任意
+export type Demographics = {
+  ageRange?: string; // 例: "20s" | "30s" など（UI側の定義に準拠）
+  gender?: string; // 例: "male" | "female" | "other" など
+  hometown?: string; // 例: "静岡県" など
+};
+
 export type SessionOutput = {
   summary: string;
   hypotheses: string[];
   next_steps: string[];
   citations: Citation[];
   counter_questions?: string[];
-  // Top5 由来のプロフィール
+  // ★ 追加：Top5 由来のプロフィール
   persona?: StrengthProfile;
 };
 
@@ -110,6 +117,7 @@ export type Session = {
   // minQuestions はモックでは任意扱いなので optional にしておく
   loop?: { threshold: number; maxQuestions: number; minQuestions?: number };
   strengths_top5?: StrengthTheme[]; // 文字列でも可だが候補制約のため型付け
+  // demographics?: Demographics; // ← 将来GETで返したくなったら有効化
 };
 
 export type ApiError = { code: string; message: string };

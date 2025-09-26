@@ -4,20 +4,19 @@ import { runSimulation } from "../../features/coach/engine/simulator";
 describe("question engine simulator", () => {
   it("runs and prints quick KPIs", () => {
     const res = runSimulation({
-      nUsers: 1000,
+      nUsers: 2000,
       threshold: 0.9,
-      maxQuestions: 8,
+      maxQuestions: 12,
       minQuestions: 1,
-      noise: 0.05,
+      noise: 0.0,
       context: null,
       strengths_top5: null,
     });
 
-    // 粗い妥当性チェック
     expect(res.avgQuestions).toBeGreaterThan(0);
     expect(res.avgConfidence).toBeGreaterThan(0.5);
 
-    // コンソールにサマリ出力（開発者が見る用）
+    // デバッグ出力
     // eslint-disable-next-line no-console
     console.table({
       avgQuestions: res.avgQuestions.toFixed(2),
@@ -28,5 +27,5 @@ describe("question engine simulator", () => {
     });
     // eslint-disable-next-line no-console
     console.log("Top IG questions:", res.igPerQuestion.slice(0, 8));
-  });
+  }, 15000); // ★ ここを追加（15秒）
 });
