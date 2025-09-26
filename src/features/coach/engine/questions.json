@@ -1,0 +1,450 @@
+[
+  {
+    "id": "Q1",
+    "text": "曖昧な状況でも方向性を決めて前に進めますか？",
+    "tags": ["意思決定", "不確実性耐性"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.85,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.45
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "初手で弁別しやすい"
+  },
+  {
+    "id": "Q2",
+    "text": "相手の感情の変化に素早く気づき、配慮して行動できますか？",
+    "tags": ["対人配慮", "共感"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.45,
+      "TYPE_EMPATHY": 0.9,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.5,
+      "TYPE_STABILITY": 0.6
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "empathyの主力"
+  },
+  {
+    "id": "Q3",
+    "text": "締切やルーチンを安定して守れますか？",
+    "tags": ["規律", "計画実行"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.9,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.65
+    },
+    "version": 1,
+    "status": "draft",
+    "notes": "executionの基礎"
+  },
+  {
+    "id": "Q4",
+    "text": "意思決定の前にデータや根拠を集めて検討しますか？",
+    "tags": ["分析", "根拠重視"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.65,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.9,
+      "TYPE_STABILITY": 0.6
+    },
+    "version": 1,
+    "status": "draft"
+  },
+  {
+    "id": "Q5",
+    "text": "安定した関係や環境の維持を重視しますか？",
+    "tags": ["安定志向", "関係維持"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.45,
+      "TYPE_EMPATHY": 0.7,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.9
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q6",
+    "text": "新しい切り口やアイデアを出すのが得意ですか？",
+    "tags": ["創造", "発想"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.85,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.65,
+      "TYPE_STABILITY": 0.45
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q7",
+    "text": "衝突が起きたとき、関係修復を優先しますか？",
+    "tags": ["調整", "対人配慮"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.5,
+      "TYPE_EMPATHY": 0.85,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.45,
+      "TYPE_STABILITY": 0.7
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q8",
+    "text": "タスクを分解して着実に前へ進めるのが得意ですか？",
+    "tags": ["段取り", "粒度調整"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.6,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.9,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.65
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q9",
+    "text": "仮説を立て、検証しながら考えを更新しますか？",
+    "tags": ["仮説検証", "学習"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.8,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.85,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q10",
+    "text": "変化より一貫性や予測可能性を好みますか？",
+    "tags": ["安定志向"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.45,
+      "TYPE_EMPATHY": 0.55,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.9
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q11",
+    "text": "相手の文脈を言い換えて分かりやすく要約できますか？",
+    "tags": ["伝達", "言語化"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.65,
+      "TYPE_EMPATHY": 0.8,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.6,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q12",
+    "text": "目標から逆算して重要度順に並べられますか？",
+    "tags": ["優先順位付け", "意思決定"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.9,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.7,
+      "TYPE_ANALYTICAL": 0.65,
+      "TYPE_STABILITY": 0.6
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q13",
+    "text": "議論ではまず結論と判断基準を提示するほうですか？",
+    "tags": ["構造化", "意思決定"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.88,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.7,
+      "TYPE_STABILITY": 0.5
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q14",
+    "text": "初対面でも空気を読みつつ場を温められますか？",
+    "tags": ["対人配慮", "場づくり"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.45,
+      "TYPE_EMPATHY": 0.88,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.45,
+      "TYPE_STABILITY": 0.65
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q15",
+    "text": "期日を守るために自分の行動を細かく管理しますか？",
+    "tags": ["自己管理", "段取り"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.92,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.7
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q16",
+    "text": "情報を集め、要点を構造化して整理するのが得意ですか？",
+    "tags": ["情報整理", "構造化"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.7,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.88,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q17",
+    "text": "関係者が安心できるよう事前に合意や期待値を整えますか？",
+    "tags": ["合意形成", "安定"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.75,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.88
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q18",
+    "text": "ゼロからの構想や青写真づくりが好きですか？",
+    "tags": ["創造", "構想力"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.9,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.65,
+      "TYPE_STABILITY": 0.45
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q19",
+    "text": "対立の仲裁や利害調整にやりがいを感じますか？",
+    "tags": ["調整", "交渉"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.85,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.5,
+      "TYPE_STABILITY": 0.75
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q20",
+    "text": "作業を始めたら途中で止めずにやり切るほうですか？",
+    "tags": ["持続", "完遂"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.9,
+      "TYPE_ANALYTICAL": 0.5,
+      "TYPE_STABILITY": 0.65
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q21",
+    "text": "判断前に前例や歴史を参照することが多いですか？",
+    "tags": ["原点思考", "参照"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.65,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.8,
+      "TYPE_STABILITY": 0.65
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q22",
+    "text": "ルールや役割の明確化を大事にしますか？",
+    "tags": ["役割明確化", "安定"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.55,
+      "TYPE_EXECUTION": 0.65,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.9
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q23",
+    "text": "複数案（A/B/C）を並べて比較し結論を出しますか？",
+    "tags": ["意思決定", "比較検討"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.88,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.75,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q24",
+    "text": "相手の期待と不安を先回りして確認しますか？",
+    "tags": ["対人配慮", "期待値管理"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.5,
+      "TYPE_EMPATHY": 0.88,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.7
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q25",
+    "text": "最小アウトプットを早く作り、改善していくのが得意ですか？",
+    "tags": ["実行", "イテレーション"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.6,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.88,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q26",
+    "text": "事実・解釈・判断を切り分けて考えますか？",
+    "tags": ["分析", "メタ認知"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.65,
+      "TYPE_EMPATHY": 0.45,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.9,
+      "TYPE_STABILITY": 0.6
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q27",
+    "text": "変更や例外があるときは事前に関係者へ共有しますか？",
+    "tags": ["安定", "リスク低減"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.65,
+      "TYPE_EXECUTION": 0.6,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.88
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q28",
+    "text": "場の議論を整理し、論点を明確にするのが得意ですか？",
+    "tags": ["ファシリ", "構造化"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.85,
+      "TYPE_EMPATHY": 0.6,
+      "TYPE_EXECUTION": 0.55,
+      "TYPE_ANALYTICAL": 0.7,
+      "TYPE_STABILITY": 0.55
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q29",
+    "text": "相手の立場に立って、伝え方を調整しますか？",
+    "tags": ["対人配慮", "伝達"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.55,
+      "TYPE_EMPATHY": 0.88,
+      "TYPE_EXECUTION": 0.5,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.7
+    },
+    "version": 1,
+    "status": "draft"
+  },
+
+  {
+    "id": "Q30",
+    "text": "複数タスクを並行しながら、抜け漏れなく進められますか？",
+    "tags": ["並行管理", "実行"],
+    "yesProb": {
+      "TYPE_STRATEGY": 0.6,
+      "TYPE_EMPATHY": 0.5,
+      "TYPE_EXECUTION": 0.88,
+      "TYPE_ANALYTICAL": 0.55,
+      "TYPE_STABILITY": 0.6
+    },
+    "version": 1,
+    "status": "draft"
+  }
+]

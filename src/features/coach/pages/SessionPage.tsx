@@ -6,9 +6,11 @@ import { SkeletonBlock } from "../../../ui/Skeleton";
 import { useToast } from "../../../ui/ToastProvider";
 import { useSearchParams } from "react-router-dom";
 import { useLoadSession } from "../api/useLoadSession";
-import StrengthPersonaCard from "../components/StrengthPersonaCard";
+import IdentityPicker, {
+  type IdentityValue,
+} from "../components/IdentityPicker";
+import { buildStrengthProfile } from "../content/strengths_persona";
 import type { StrengthProfile } from "../../../types/api";
-import { buildStrengthProfile as buildStrengthProfilePreview } from "../content/strengths_persona";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -50,7 +52,6 @@ type SessionOutput = {
   next_steps: string[];
   citations: { text: string; anchor: string }[];
   counter_questions?: string[];
-  persona?: StrengthProfile;
 };
 type SessionDTO = {
   id: string;
@@ -60,6 +61,7 @@ type SessionDTO = {
 };
 
 const LS_KEY = "coach_session_id";
+const LS_IDENTITY_KEY = "coach_identity";
 const ANSWER_LABEL: Record<
   "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO",
   string
@@ -71,17 +73,94 @@ const ANSWER_LABEL: Record<
   NO: "いいえ",
 };
 
+function StrengthPersonaPreview({ persona }: { persona?: StrengthProfile }) {
+  if (!persona) return null;
+  return (
+    <div className="border rounded p-3 bg-white">
+      {persona.summarizedTraits?.length > 0 && (
+        <>
+          <div className="text-sm font-semibold mb-1">特徴（サマリ）</div>
+          <ul className="list-disc pl-5 mb-2">
+            {persona.summarizedTraits.map((t, i) => (
+              <li key={`traits-${i}`}>{t}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      {persona.summarizedManagement?.length > 0 && (
+        <>
+          <div className="text-sm font-semibold mb-1">
+            マネジメント（サマリ）
+          </div>
+          <ul className="list-disc pl-5 mb-2">
+            {persona.summarizedManagement.map((m, i) => (
+              <li key={`mgmt-${i}`}>{m}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      {persona.perTheme?.length > 0 && (
+        <>
+          <div className="text-sm font-semibold mb-1">資質ごとのヒント</div>
+          <div className="grid md:grid-cols-2 gap-3">
+            {persona.perTheme.map((p, idx) => (
+              <div key={`${p.theme}-${idx}`} className="border rounded p-2">
+                <div className="font-semibold mb-1">{p.theme}</div>
+                {p.traits?.length > 0 && (
+                  <>
+                    <div className="text-xs font-medium">特徴</div>
+                    <ul className="list-disc pl-5 text-sm mb-1">
+                      {p.traits.map((t, i) => (
+                        <li key={`${p.theme}-t-${i}`}>{t}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {p.management?.length > 0 && (
+                  <>
+                    <div className="text-xs font-medium">マネジメント</div>
+                    <ul className="list-disc pl-5 text-sm">
+                      {p.management.map((m, i) => (
+                        <li key={`${p.theme}-m-${i}`}>{m}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SessionPage() {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const firstAnswerBtnRef = useRef<HTMLButtonElement | null>(null);
   const showToast = useToast();
 
-  // 画面ステップ: 1=Top5入力/プレビュー, 2=文脈&ログ入力（→開始）
-  const [step, setStep] = useState<1 | 2>(1);
-
   const [context, setContext] = useState<"人間関係" | "仕事" | "プライベート">(
     "仕事"
   );
+
+  // ▼ 基本属性（任意）
+  const [identity, setIdentity] = useState<IdentityValue>(() => {
+    try {
+      const raw = localStorage.getItem(LS_IDENTITY_KEY);
+      return raw ? (JSON.parse(raw) as IdentityValue) : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_IDENTITY_KEY, JSON.stringify(identity));
+    } catch {
+      /* ignore */
+    }
+  }, [identity]);
+
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<StrengthTheme[]>([]);
   const canAddMore = selected.length < 5;
@@ -91,10 +170,11 @@ export default function SessionPage() {
     return STRENGTH_THEMES.filter((t) => t.includes(q));
   }, [query]);
 
-  const personaPreview = useMemo(
-    () => (selected.length ? buildStrengthProfilePreview(selected) : null),
-    [selected]
-  );
+  // Top5 → プレビュー（セッション開始前の即時計算）
+  const personaPreview = useMemo<StrengthProfile | undefined>(() => {
+    if (!selected.length) return undefined;
+    return buildStrengthProfile(selected);
+  }, [selected]);
 
   const create = useCreateSession();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -137,7 +217,21 @@ export default function SessionPage() {
 
   // セッション開始
   const onStart = async () => {
-    const transcript = taRef.current?.value || "";
+    const body = taRef.current?.value || "";
+    // 属性メタを1行付記（任意・サーバ変更なし）
+    const meta = [
+      identity.ageBand ? `年齢帯:${identity.ageBand}` : null,
+      identity.gender ? `性別:${identity.gender}` : null,
+      identity.region
+        ? `出身:${identity.region}${
+            identity.prefecture ? `(${identity.prefecture})` : ""
+          }`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" / ");
+    const transcript = meta ? `【属性】${meta}\n${body}` : body;
+
     setT0(performance.now());
     try {
       const s = await create.mutateAsync({
@@ -394,13 +488,41 @@ export default function SessionPage() {
         <span title="Top5→軽い事前確率→質問で更新→確信度で確定">ℹ️</span>
       </h1>
 
-      {/* ===== Step 1: Top5 入力＆プレビュー ===== */}
-      {!sessionId && step === 1 && (
+      {/* ===== 初期入力 ===== */}
+      {!sessionId && (
         <div className="space-y-3" aria-busy={create.isPending}>
+          <fieldset className="space-y-2">
+            <legend className="font-medium">いま一番の悩み領域</legend>
+            <div className="flex gap-4">
+              {(["人間関係", "仕事", "プライベート"] as const).map((v) => (
+                <label key={v} className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="ctx"
+                    checked={context === v}
+                    onChange={() => setContext(v)}
+                  />
+                  <span>{v}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* 基本属性（任意） */}
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold">基本属性（任意）</h2>
+            <IdentityPicker value={identity} onChange={setIdentity} />
+            <p className="text-xs text-gray-500">
+              セッション開始時、会話ログの冒頭に「【属性】…」として1行だけ付記されます（サーバ変更なし）
+            </p>
+          </section>
+
           {/* Top5 選択 */}
           <div className="space-y-2">
             <div className="flex items-end justify-between gap-2">
-              <label className="font-medium">ストレングスTop5（最大5つ）</label>
+              <label className="font-medium">
+                ストレングスTop5（最大5つまで選択・任意）
+              </label>
               <div className="text-sm text-gray-600">
                 {selected.length}/5 選択
               </div>
@@ -457,55 +579,16 @@ export default function SessionPage() {
           </div>
 
           {/* ▼ 即時プレビュー：ストレングス（ベータ） */}
-          <section className="space-y-2">
-            <h2 className="text-xl font-semibold">ストレングス（ベータ）</h2>
-            <StrengthPersonaCard persona={personaPreview ?? undefined} />
-            <p className="text-xs text-gray-500">
-              ※
-              上の選択を変えると自動で更新されます（まだセッションは開始していません）
-            </p>
-          </section>
-
-          <div className="flex gap-2">
-            <button
-              className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
-              onClick={() => setStep(2)}
-              disabled={selected.length === 0}
-            >
-              次へ（お悩み領域/会話ログ）
-            </button>
-            <button
-              className="rounded border px-3 py-2"
-              onClick={() => {
-                setSelected([]);
-                setQuery("");
-              }}
-            >
-              クリア
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== Step 2: 文脈/会話ログ → セッション開始 ===== */}
-      {!sessionId && step === 2 && (
-        <div className="space-y-3" aria-busy={create.isPending}>
-          <fieldset className="space-y-2">
-            <legend className="font-medium">いま一番の悩み領域</legend>
-            <div className="flex gap-4">
-              {(["人間関係", "仕事", "プライベート"] as const).map((v) => (
-                <label key={v} className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="ctx"
-                    checked={context === v}
-                    onChange={() => setContext(v)}
-                  />
-                  <span>{v}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          {selected.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-xl font-semibold">ストレングス（ベータ）</h2>
+              <StrengthPersonaPreview persona={personaPreview} />
+              <p className="text-xs text-gray-500">
+                ※
+                Top5の選択に応じて自動更新されます（セッション開始前のプレビュー）
+              </p>
+            </section>
+          )}
 
           {/* ログ */}
           <div className="space-y-1">
@@ -528,12 +611,6 @@ export default function SessionPage() {
               onClick={onStart}
             >
               {create.isPending ? "生成中…" : "開始"}
-            </button>
-            <button
-              className="rounded border px-3 py-2"
-              onClick={() => setStep(1)}
-            >
-              戻る（ストレングス）
             </button>
           </div>
 
@@ -592,14 +669,6 @@ export default function SessionPage() {
                 )}
               </ul>
             )}
-          </section>
-
-          {/* ▼ ストレングス・ペルソナを表示 */}
-          <section className="space-y-2">
-            <h2 className="text-xl font-semibold">ストレングス（ベータ）</h2>
-            <StrengthPersonaCard
-              persona={(sessionData?.output ?? create.data!.output).persona}
-            />
           </section>
 
           {!!(sessionData?.output ?? create.data!.output).counter_questions
