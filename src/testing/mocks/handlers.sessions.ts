@@ -196,10 +196,10 @@ export const handlers = [
     );
     const prior = biasWithDemographics(prior0, body.demographics);
 
-    // Top5 から StrengthProfile（persona）を1回だけ作る
+    // Top5 から StrengthProfile（persona）を1回だけ作るmh
     const persona =
       strengths && strengths.length > 0
-        ? buildStrengthProfile(strengths, 5)
+        ? buildStrengthProfile(strengths)
         : undefined;
 
     const session: Session = {
@@ -304,7 +304,7 @@ export const handlers = [
         sess.output = out;
         // persona は Top5 からの派生なので付け直す
         if (sess.strengths_top5?.length) {
-          sess.output.persona = buildStrengthProfile(sess.strengths_top5, 5);
+          sess.output.persona = buildStrengthProfile(sess.strengths_top5);
         }
       } catch {
         // 失敗時は軽微更新でフォールバック

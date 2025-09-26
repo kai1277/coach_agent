@@ -53,9 +53,6 @@ export type EntityId = TypeKey;
 
 export type Citation = { text: string; anchor: string };
 
-// ★ Top5 から生成するプロフィール（特徴/マネジメント）
-export { computeStrengthProfileFromTop5 as buildStrengthProfile };
-
 export type StrengthProfile = {
   perTheme: { theme: string; traits: string[]; management: string[] }[];
   summarizedTraits: string[];
