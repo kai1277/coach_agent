@@ -1,0 +1,464 @@
+openapi: 3.0.3
+info:
+  title: Coach MVP API (Draft)
+  version: 0.1.0
+servers:
+  - url: https://api.example.com
+paths:
+  /api/sessions:
+    post:
+      summary: Start a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transcript:
+                  type: string
+                  minLength: 20
+                context:
+                  type: string
+                  enum: [人間関係, 仕事, プライベート]
+                strengths_top5:
+                  type: array
+                  maxItems: 5
+                  uniqueItems: true
+                  items:
+                    $ref: "#/components/schemas/StrengthTheme"
+              required: [transcript]
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/sessions/{id}:
+    get:
+      summary: Get session by id
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Session" } },
+              },
+          }
+        "404":
+          {
+            description: Not found,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+  /api/sessions/{id}/actions:
+    post:
+      summary: Refine output with extra instruction
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                properties: { input: { type: string } },
+                required: [input],
+              }
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Session" } },
+              },
+          }
+        "400":
+          {
+            description: Bad request,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "404":
+          {
+            description: Not found,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+  /api/sessions/{id}/questions/next:
+    get:
+      summary: Get next question or final result
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LoopFetchInProgress"
+                  - $ref: "#/components/schemas/LoopFetchDone"
+        "404":
+          {
+            description: Not found,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+  /api/sessions/{id}/answers:
+    post:
+      summary: Submit an answer
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                questionId: { type: string }
+                answer: { $ref: "#/components/schemas/Answer5" }
+              required: [questionId, answer]
+      responses:
+        "200":
+          description: Next state or final result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LoopFetchInProgress"
+                  - $ref: "#/components/schemas/LoopFetchDone"
+        "400":
+          {
+            description: Bad request,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "404":
+          {
+            description: Not found,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "409":
+          {
+            description: Conflict,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+  /api/sessions/{id}/answers/undo:
+    post:
+      summary: Undo last answer
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      { $ref: "#/components/schemas/LoopFetchInProgress" },
+                  },
+              },
+          }
+        "400":
+          {
+            description: No history,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "404":
+          {
+            description: Not found,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+  /api/sessions/{id}/loop:
+    patch:
+      summary: Update loop settings
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                threshold: { type: number, minimum: 0.5, maximum: 0.99 }
+                maxQuestions: { type: integer, minimum: 3, maximum: 12 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  loop:
+                    type: object
+                    properties:
+                      threshold: { type: number }
+                      maxQuestions: { type: integer }
+                    required: [threshold, maxQuestions]
+        "404":
+          {
+            description: Not found,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "422":
+          {
+            description: Validation error,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+components:
+  schemas:
+    StrengthTheme:
+      type: string
+      enum:
+        [
+          達成欲,
+          活発性,
+          適応性,
+          分析思考,
+          アレンジ,
+          信念,
+          指令性,
+          コミュニケーション,
+          競争性,
+          共感性,
+          公平性,
+          原点思考,
+          未来志向,
+          調和性,
+          着想,
+          包含,
+          個別化,
+          収集心,
+          成長促進,
+          内省,
+          親密性,
+          学習欲,
+          最上志向,
+          ポジティブ,
+          規律性,
+          回復志向,
+          責任感,
+          自我,
+          自己確信,
+          戦略性,
+          社交性,
+          慎重さ,
+          運命思考,
+          目標志向,
+        ]
+    EntityId:
+      type: string
+      enum:
+        [
+          TYPE_STRATEGY,
+          TYPE_EMPATHY,
+          TYPE_EXECUTION,
+          TYPE_ANALYTICAL,
+          TYPE_STABILITY,
+        ]
+    Answer5:
+      type: string
+      enum: [YES, PROB_YES, UNKNOWN, PROB_NO, NO]
+
+    Citation:
+      type: object
+      properties:
+        text: { type: string }
+        anchor: { type: string }
+      required: [text, anchor]
+
+    SessionOutput:
+      type: object
+      properties:
+        summary: { type: string }
+        hypotheses: { type: array, items: { type: string } }
+        next_steps: { type: array, items: { type: string } }
+        citations:
+          { type: array, items: { $ref: "#/components/schemas/Citation" } }
+        counter_questions: { type: array, items: { type: string } }
+      required: [summary, hypotheses, next_steps, citations]
+
+    Posterior:
+      type: object
+      additionalProperties: false
+      properties:
+        TYPE_STRATEGY: { type: number }
+        TYPE_EMPATHY: { type: number }
+        TYPE_EXECUTION: { type: number }
+        TYPE_ANALYTICAL: { type: number }
+        TYPE_STABILITY: { type: number }
+      required:
+        [
+          TYPE_STRATEGY,
+          TYPE_EMPATHY,
+          TYPE_EXECUTION,
+          TYPE_ANALYTICAL,
+          TYPE_STABILITY,
+        ]
+
+    LoopQuestion:
+      type: object
+      properties:
+        id: { type: string }
+        text: { type: string }
+      required: [id, text]
+
+    EvidenceItem:
+      type: object
+      properties:
+        questionId: { type: string }
+        text: { type: string }
+        answer: { $ref: "#/components/schemas/Answer5" }
+        delta: { type: number }
+      required: [questionId, text, answer, delta]
+
+    LoopFetchInProgress:
+      type: object
+      properties:
+        done: { type: boolean, enum: [false] }
+        question: { $ref: "#/components/schemas/LoopQuestion" }
+        progress:
+          type: object
+          properties:
+            asked: { type: integer }
+            max: { type: integer }
+          required: [asked, max]
+        hint:
+          type: object
+          properties:
+            topLabel: { type: string }
+            confidence: { type: number }
+          required: [topLabel, confidence]
+        posterior: { $ref: "#/components/schemas/Posterior" }
+      required: [done, question, progress, hint, posterior]
+
+    LoopFetchDone:
+      type: object
+      properties:
+        done: { type: boolean, enum: [true] }
+        top:
+          type: object
+          properties:
+            id: { $ref: "#/components/schemas/EntityId" }
+            label: { type: string }
+            confidence: { type: number }
+          required: [id, label, confidence]
+        next_steps: { type: array, items: { type: string } }
+        asked: { type: integer }
+        max: { type: integer }
+        posterior: { $ref: "#/components/schemas/Posterior" }
+        evidence:
+          { type: array, items: { $ref: "#/components/schemas/EvidenceItem" } }
+      required: [done, top, next_steps, asked, max, posterior]
+
+    Session:
+      type: object
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+        output: { $ref: "#/components/schemas/SessionOutput" }
+        loop:
+          type: object
+          properties:
+            threshold: { type: number }
+            maxQuestions: { type: integer }
+          required: [threshold, maxQuestions]
+        strengths_top5:
+          type: array
+          items: { $ref: "#/components/schemas/StrengthTheme" }
+      required: [id, createdAt, output]
+
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+      required: [code, message]
