@@ -9,7 +9,7 @@ import { useLoadSession } from "../api/useLoadSession";
 import IdentityPicker, {
   type IdentityValue,
 } from "../components/IdentityPicker";
-import type { Demographics } from "../../../types/api";
+import type { Demographics, StrengthProfile } from "../../../types/api";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -45,12 +45,14 @@ type LoopFetch =
       evidence: EvidenceItem[];
     };
 
+// output は persona と next_steps だけ使う
 type SessionOutput = {
   summary: string;
   hypotheses: string[];
   next_steps: string[];
   citations: { text: string; anchor: string }[];
   counter_questions?: string[];
+  persona?: StrengthProfile;
 };
 type SessionDTO = {
   id: string;
@@ -162,8 +164,7 @@ export default function SessionPage() {
     setT0(performance.now());
     try {
       const s = await create.mutateAsync({
-        transcript, // 必須を満たすために自動送信
-        // context は送らない（サーバ側が "仕事" にデフォルト）
+        transcript, // 必須を満たすための自動テキスト
         strengths_top5: selected.length ? selected : undefined,
         demographics,
       } as any);
@@ -409,6 +410,68 @@ export default function SessionPage() {
     );
   };
 
+  const PersonaView = ({ profile }: { profile: StrengthProfile }) => {
+    return (
+      <div className="space-y-4">
+        {(profile.summarizedTraits?.length ||
+          profile.summarizedManagement?.length) && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {profile.summarizedTraits?.length ? (
+              <div className="p-3 border rounded">
+                <div className="font-medium mb-1">あなたの特徴（要点）</div>
+                <ul className="list-disc pl-5">
+                  {profile.summarizedTraits.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {profile.summarizedManagement?.length ? (
+              <div className="p-3 border rounded">
+                <div className="font-medium mb-1">効果的なマネジメント</div>
+                <ul className="list-disc pl-5">
+                  {profile.summarizedManagement.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {profile.perTheme?.length ? (
+          <div className="space-y-3">
+            {profile.perTheme.map((t) => (
+              <div key={t.theme} className="p-3 border rounded">
+                <div className="font-semibold mb-1">{t.theme}</div>
+                {t.traits?.length ? (
+                  <div className="mb-2">
+                    <div className="text-sm text-gray-600">特徴</div>
+                    <ul className="list-disc pl-5">
+                      {t.traits.map((x, i) => (
+                        <li key={i}>{x}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {t.management?.length ? (
+                  <div>
+                    <div className="text-sm text-gray-600">マネジメント</div>
+                    <ul className="list-disc pl-5">
+                      {t.management.map((x, i) => (
+                        <li key={i}>{x}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <div className="mx-auto max-w-3xl p-4 space-y-6">
       <h1 className="text-2xl font-bold">
@@ -511,9 +574,9 @@ export default function SessionPage() {
         </div>
       )}
 
-      {/* ===== 初回結果 ===== */}
+      {/* ===== 初回結果（要約・仮説などは非表示、Persona & 次の一歩のみ） ===== */}
       {sessionId && (sessionData || create.data) && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="text-sm text-gray-600">
             セッションID: <code>{sessionId}</code>
             {timeToFirst !== null && <span> / 初回出力: {timeToFirst} ms</span>}
@@ -527,66 +590,21 @@ export default function SessionPage() {
             </button>
           </div>
 
-          <section className="space-y-2">
-            <h2 className="text-xl font-semibold">要約</h2>
-            {!create.data && !sessionData ? (
-              <SkeletonBlock lines={5} />
-            ) : (
-              <pre className="whitespace-pre-wrap bg-gray-50 p-3 rounded border">
-                {(sessionData?.output ?? create.data!.output).summary}
-              </pre>
-            )}
-          </section>
+          {/* ストレングス（ベータ） */}
+          {(() => {
+            const persona = (sessionData?.output ?? create.data!.output)
+              .persona;
+            return persona ? (
+              <section className="space-y-2">
+                <h2 className="text-xl font-semibold">
+                  ストレングス（ベータ）
+                </h2>
+                <PersonaView profile={persona} />
+              </section>
+            ) : null;
+          })()}
 
-          <section className="space-y-2">
-            <h2 className="text-xl font-semibold">仮説</h2>
-            {!create.data && !sessionData ? (
-              <SkeletonBlock lines={3} />
-            ) : (
-              <ul className="list-disc pl-6">
-                {(sessionData?.output ?? create.data!.output).hypotheses.map(
-                  (h, i) => (
-                    <li key={i}>{h}</li>
-                  )
-                )}
-              </ul>
-            )}
-          </section>
-
-          {!!(sessionData?.output ?? create.data!.output).counter_questions
-            ?.length && (
-            <section className="space-y-2">
-              <h2 className="text-xl font-semibold">反証質問</h2>
-              <ul className="list-disc pl-6">
-                {(
-                  sessionData?.output ?? create.data!.output
-                ).counter_questions!.map((q, i) => (
-                  <li key={i}>{q}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <section className="space-y-2">
-            <h2 className="text-xl font-semibold">根拠引用</h2>
-            <ul className="list-disc pl-6">
-              {(sessionData?.output ?? create.data!.output).citations.map(
-                (c, i) => (
-                  <li key={i}>
-                    <a
-                      href={c.anchor}
-                      className="underline"
-                      onClick={(e) => e.preventDefault()}
-                    >
-                      {c.text}
-                    </a>{" "}
-                    <span className="text-gray-500">{c.anchor}</span>
-                  </li>
-                )
-              )}
-            </ul>
-          </section>
-
+          {/* 次の一歩 */}
           <section className="space-y-2">
             <h2 className="text-xl font-semibold">次の一歩</h2>
             <ul className="pl-0">
@@ -608,15 +626,10 @@ export default function SessionPage() {
         </div>
       )}
 
-      {/* ===== 追加指示 ===== */}
+      {/* ===== 追加指示（要約に追記はされますがUIでは要約は今は非表示） ===== */}
       {sessionId && (
         <section className="space-y-2">
-          <h3 className="font-medium">
-            追加の指示で更新{" "}
-            <span title="要約の先頭に【更新】を追記し、次の一歩の先頭を差し替えます">
-              ℹ️
-            </span>
-          </h3>
+          <h3 className="font-medium">追加の指示で更新</h3>
           <div className="flex gap-2">
             <input
               aria-label="追加指示"
