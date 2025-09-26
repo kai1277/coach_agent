@@ -72,11 +72,19 @@ const ANSWER_LABEL: Record<
 };
 
 function identityToDemographics(v: IdentityValue): Demographics {
+  const anyv = v as any;
+  // IdentityPicker 側の実装差異に強くする（ageRange or age、hometown or home/birthplace など）
+  const ageLike = anyv.ageRange ?? anyv.age ?? null;
+  const genderLike = anyv.gender ?? null;
+  const hometownRaw = anyv.hometown ?? anyv.home ?? anyv.birthplace ?? "";
+
   return {
-    // IdentityPicker は null を使うので、API には undefined で渡す
-    ageRange: v.ageRange ?? undefined,
-    gender: v.gender ? String(v.gender) : undefined, // API 側は string 想定
-    hometown: v.hometown?.trim() ? v.hometown.trim() : undefined,
+    ageRange: ageLike ?? undefined,
+    gender: genderLike ? String(genderLike) : undefined,
+    hometown:
+      typeof hometownRaw === "string" && hometownRaw.trim()
+        ? hometownRaw.trim()
+        : undefined,
   };
 }
 
@@ -95,11 +103,7 @@ export default function SessionPage() {
   }, [query]);
 
   // デモグラ（任意）
-  const [identity, setIdentity] = useState<IdentityValue>({
-    ageRange: null,
-    gender: null,
-    hometown: "",
-  });
+  const [identity, setIdentity] = useState<IdentityValue>({} as IdentityValue);
 
   const create = useCreateSession();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -303,7 +307,7 @@ export default function SessionPage() {
     setTimeToFirst(null);
     setSelected([]);
     setQuery("");
-    setIdentity({ ageRange: null, gender: null, hometown: "" });
+    setIdentity({} as IdentityValue);
     create.reset();
     advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
