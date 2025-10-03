@@ -3,11 +3,14 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  // Vitest 設定
-  test: {
-    globals: true, // describe/it/expect をグローバルで使えるように（任意）
-    environment: "node", // APIレイヤのテストなので node
-    setupFiles: ["./src/testing/tests/setup.ts"],
-    include: ["src/testing/tests/**/*.spec.ts"],
+  server: {
+    proxy: {
+      // 同一オリジン → Vite が Dify に中継（CORS回避）
+      "/__proxy/dify": {
+        target: "https://api.dify.ai",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/__proxy\/dify/, ""),
+      },
+    },
   },
 });

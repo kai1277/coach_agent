@@ -308,11 +308,13 @@ export const handlers = [
             n: body.n ?? 5,
           });
           // id付与
-          const withId = questions.map((q, i) => ({
-            id: `SQ${i + 1}`,
-            theme: q.theme,
-            text: q.text,
-          }));
+          const withId = questions.map(
+            (q: { theme: string; text: string }, i: number) => ({
+              id: `SQ${i + 1}`,
+              theme: q.theme,
+              text: q.text,
+            })
+          );
           return HttpResponse.json({ questions: withId });
         } catch (e: any) {
           // フォールバック
