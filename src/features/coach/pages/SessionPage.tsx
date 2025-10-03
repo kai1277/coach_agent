@@ -683,7 +683,7 @@ export default function SessionPage() {
           </section>
 
           {/* 以降：既存の出力（要約/仮説/反証/引用/次の一歩） */}
-          <section className="space-y-2">
+          {/* <section className="space-y-2">
             <h2 className="text-xl font-semibold">要約</h2>
             {!create.data && !sessionData ? (
               <SkeletonBlock lines={5} />
@@ -692,9 +692,9 @@ export default function SessionPage() {
                 {(sessionData?.output ?? create.data!.output).summary}
               </pre>
             )}
-          </section>
+          </section> */}
 
-          <section className="space-y-2">
+          {/* <section className="space-y-2">
             <h2 className="text-xl font-semibold">仮説</h2>
             {!create.data && !sessionData ? (
               <SkeletonBlock lines={3} />
@@ -707,9 +707,9 @@ export default function SessionPage() {
                 )}
               </ul>
             )}
-          </section>
+          </section> */}
 
-          {!!(sessionData?.output ?? create.data!.output).counter_questions
+          {/* {!!(sessionData?.output ?? create.data!.output).counter_questions
             ?.length && (
             <section className="space-y-2">
               <h2 className="text-xl font-semibold">反証質問</h2>
@@ -721,9 +721,9 @@ export default function SessionPage() {
                 ))}
               </ul>
             </section>
-          )}
+          )} */}
 
-          <section className="space-y-2">
+          {/* <section className="space-y-2">
             <h2 className="text-xl font-semibold">根拠引用</h2>
             <ul className="list-disc pl-6">
               {(sessionData?.output ?? create.data!.output).citations.map(
@@ -741,7 +741,7 @@ export default function SessionPage() {
                 )
               )}
             </ul>
-          </section>
+          </section> */}
 
           <section className="space-y-2">
             <h2 className="text-xl font-semibold">次の一歩</h2>
