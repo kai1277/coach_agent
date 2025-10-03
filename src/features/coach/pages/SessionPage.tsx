@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCreateSession } from "../api/useCreateSession";
-import { useNextStep } from "../api/useNextStep";
 import { STRENGTH_THEMES, type StrengthTheme } from "../constants/strengths";
 import { SkeletonBlock } from "../../../ui/Skeleton";
 import { useToast } from "../../../ui/ToastProvider";
@@ -11,6 +10,9 @@ import IdentityPicker, {
 } from "../components/IdentityPicker";
 import type { Demographics, StrengthProfile } from "../../../types/api";
 
+/* =========================
+ * ローカル型（UIでのみ使用）
+ * ========================= */
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
   | "TYPE_STRATEGY"
@@ -26,7 +28,6 @@ type EvidenceItem = {
   answer: "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO";
   delta: number;
 };
-
 type LoopFetch =
   | {
       done: false;
@@ -45,13 +46,8 @@ type LoopFetch =
       evidence: EvidenceItem[];
     };
 
-// output は persona と next_steps だけ使う
 type SessionOutput = {
-  summary: string;
-  hypotheses: string[];
   next_steps: string[];
-  citations: { text: string; anchor: string }[];
-  counter_questions?: string[];
   persona?: StrengthProfile;
 };
 type SessionDTO = {
@@ -73,13 +69,22 @@ const ANSWER_LABEL: Record<
   NO: "いいえ",
 };
 
+const TYPE_SHORT_JP: Record<keyof Posterior, string> = {
+  TYPE_STRATEGY: "戦略",
+  TYPE_EMPATHY: "共感",
+  TYPE_EXECUTION: "実行",
+  TYPE_ANALYTICAL: "探究",
+  TYPE_STABILITY: "安定",
+};
+
+/* =========================
+ * Identity → Demographics
+ * ========================= */
 function identityToDemographics(v: IdentityValue): Demographics {
   const anyv = v as any;
-  // IdentityPicker 側の実装差異に強くする（ageRange or age、hometown or home/birthplace など）
   const ageLike = anyv.ageRange ?? anyv.age ?? null;
   const genderLike = anyv.gender ?? null;
   const hometownRaw = anyv.hometown ?? anyv.home ?? anyv.birthplace ?? "";
-
   return {
     ageRange: ageLike ?? undefined,
     gender: genderLike ? String(genderLike) : undefined,
@@ -90,6 +95,162 @@ function identityToDemographics(v: IdentityValue): Demographics {
   };
 }
 
+/* =========================
+ * 断定/1on1/NG ビルダー
+ * ========================= */
+function topTypeFromPosterior(p?: Posterior | null): keyof Posterior | null {
+  if (!p) return null;
+  return (Object.keys(p) as (keyof Posterior)[]).reduce((a, b) =>
+    p[a] >= p[b] ? a : (b as any)
+  );
+}
+
+function buildHeadline(
+  profile?: StrengthProfile,
+  posterior?: Posterior | null
+) {
+  const top = topTypeFromPosterior(posterior);
+  const topLabel = top ? TYPE_SHORT_JP[top] : null;
+  const traits = profile?.summarizedTraits?.slice(0, 2) ?? [];
+  const t1 = traits[0] || "強みを活かす";
+  const t2 = traits[1] || "周囲と整合させる";
+  if (topLabel) {
+    return `あなたは「${topLabel}×${t1}」型。初動よりも${t2}ことを重視するタイプです。`;
+  }
+  return `あなたは「${t1}」が強いタイプ。状況に合わせて着実に前進できます。`;
+}
+
+function buildOneOnOnePrompts(profile?: StrengthProfile): string[] {
+  if (!profile) return [];
+  const per = profile.perTheme ?? [];
+  const out: string[] = [];
+  for (const t of per.slice(0, 4)) {
+    if (t.traits?.length) {
+      out.push(`「${t.theme}」が出ています。最近それが活きた具体例は？`);
+    }
+    if (t.management?.length) {
+      out.push(
+        `「${t.theme}」の人が力を発揮する環境は？何が整えばベストですか？`
+      );
+    }
+  }
+  return Array.from(new Set(out)).slice(0, 5);
+}
+
+function buildNGs(profile?: StrengthProfile): string[] {
+  if (!profile) return [];
+  const per = profile.perTheme ?? [];
+  const ng: string[] = [];
+  for (const t of per.slice(0, 5)) {
+    if (t.management?.some((m) => /裁量|任せる|目的/.test(m))) {
+      ng.push(
+        `「${t.theme}」に対して細かすぎる手順指示だけで縛るのはNG。意図と任せ方を。`
+      );
+    }
+    if (t.management?.some((m) => /フィードバック|承認|安心/.test(m))) {
+      ng.push(`「${t.theme}」の動機付けを軽視しない（承認/安心の無視はNG）。`);
+    }
+  }
+  if (ng.length === 0) {
+    ng.push("曖昧な期待値で走らせない（目的と判断基準は明文化）");
+    ng.push("締切直前だけの指摘は避け、途中の確認ポイントを置く");
+  }
+  return Array.from(new Set(ng)).slice(0, 3);
+}
+
+/* =========================
+ * 資質ベースのエントリ質問
+ * ========================= */
+type SeedQ = { id: string; theme: string; text: string };
+type SeedAnswer = "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO";
+
+function seedQuestionsFromThemes(themes: string[]): SeedQ[] {
+  const mk = (id: string, theme: string, text: string): SeedQ => ({
+    id,
+    theme,
+    text,
+  });
+  const out: SeedQ[] = [];
+  let i = 1;
+  for (const t of themes.slice(0, 5)) {
+    // 最低限の自社語彙での言い換え
+    if (t === "原点思考")
+      out.push(mk(`SQ${i++}`, t, "歴史や由来を調べるのはワクワクしますか？"));
+    else if (t === "戦略性")
+      out.push(
+        mk(`SQ${i++}`, t, "選択肢を並べて最善ルートを素早く選べますか？")
+      );
+    else if (t === "着想")
+      out.push(
+        mk(`SQ${i++}`, t, "新しい切り口を思いつく瞬間がよくありますか？")
+      );
+    else if (t === "コミュニケーション")
+      out.push(mk(`SQ${i++}`, t, "要点をつかんで人に伝えるのは得意ですか？"));
+    else if (t === "包含")
+      out.push(
+        mk(`SQ${i++}`, t, "輪から外れた人を自然に巻き込みにいきますか？")
+      );
+    else if (t === "ポジティブ")
+      out.push(
+        mk(`SQ${i++}`, t, "場の空気を明るくする役割を自分で担うほうですか？")
+      );
+    else if (t === "分析思考")
+      out.push(mk(`SQ${i++}`, t, "まず根拠やデータから考えるほうですか？"));
+    else if (t === "回復志向")
+      out.push(mk(`SQ${i++}`, t, "問題の原因を特定し直すのが得意ですか？"));
+    else if (t === "規律性")
+      out.push(mk(`SQ${i++}`, t, "決めたルーチンを崩さずに続けられますか？"));
+    else if (t === "目標志向")
+      out.push(
+        mk(`SQ${i++}`, t, "ゴールから逆算して優先順位を切れるほうですか？")
+      );
+    else
+      out.push(mk(`SQ${i++}`, t, `「${t}」っぽさを自覚する瞬間は多いですか？`));
+  }
+  return out;
+}
+
+function formatSeedAnswersForInstruction(qa: { q: SeedQ; a: SeedAnswer }[]) {
+  const label: Record<SeedAnswer, string> = {
+    YES: "はい",
+    PROB_YES: "たぶんはい",
+    UNKNOWN: "わからない",
+    PROB_NO: "たぶんいいえ",
+    NO: "いいえ",
+  };
+  const lines = qa.map(
+    ({ q, a }) => `- [${label[a]}] ${q.text}（テーマ: ${q.theme}）`
+  );
+  return [
+    "以下は資質ベースのエントリ質問に対する回答です。",
+    "この回答を考慮して、人物像の断定・1on1質問カード・NG行動をより的確にしてください。",
+    "",
+    ...lines,
+  ].join("\n");
+}
+
+// ★ サーバへ Top5/デモグラを渡して質問を生成してもらう
+async function fetchSeedQuestions(
+  sessionId: string,
+  params: {
+    strengths_top5?: string[];
+    demographics?: { ageRange?: string; gender?: string; hometown?: string };
+    n?: number;
+  }
+): Promise<SeedQ[]> {
+  const res = await fetch(`/api/sessions/${sessionId}/seed-questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.message || "質問生成に失敗しました");
+  return Array.isArray(json?.questions) ? json.questions : [];
+}
+
+/* =========================
+ * コンポーネント
+ * ========================= */
 export default function SessionPage() {
   const firstAnswerBtnRef = useRef<HTMLButtonElement | null>(null);
   const showToast = useToast();
@@ -107,17 +268,15 @@ export default function SessionPage() {
   // デモグラ（任意）
   const [identity, setIdentity] = useState<IdentityValue>({} as IdentityValue);
 
+  // API
   const create = useCreateSession();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionData, setSessionData] = useState<SessionDTO | null>(null);
 
-  const advance = useNextStep(sessionId);
-  const [refineText, setRefineText] = useState("");
-
   const [timeToFirst, setTimeToFirst] = useState<number | null>(null);
   const [t0, setT0] = useState<number | null>(null);
 
-  // 質問ループ
+  // 診断ループ
   const [loopStarted, setLoopStarted] = useState(false);
   const [loopBusy, setLoopBusy] = useState(false);
   const [loopError, setLoopError] = useState<string | null>(null);
@@ -128,10 +287,15 @@ export default function SessionPage() {
   const [maxQuestions, setMaxQuestions] = useState(8);
   const [minQuestions, setMinQuestions] = useState(0);
 
-  // URL パラメータから復元
+  // URL 復元
   const [sp, setSp] = useSearchParams();
   const sessionFromUrl = sp.get("session");
   const { data: restored } = useLoadSession(sessionFromUrl);
+
+  // エントリ質問（Top5→生成）
+  const [seedQs, setSeedQs] = useState<SeedQ[]>([]);
+  const [seedAns, setSeedAns] = useState<Record<string, SeedAnswer>>({});
+  const [seedApplied, setSeedApplied] = useState(false);
 
   // 永続化：ロード時に sessionId を復元
   useEffect(() => {
@@ -146,9 +310,8 @@ export default function SessionPage() {
     localStorage.setItem(LS_KEY, restored.id);
   }, [restored]);
 
-  // セッション開始（悩み領域／会話ログは送らない）
+  // セッション開始
   const onStart = async () => {
-    // サーバは transcript>=20 文字必須なので安全なダミーを生成
     const fallback =
       "（自動生成ログ）Top5と基本属性から初期セッションを開始します。";
     const autoTranscript =
@@ -157,14 +320,13 @@ export default function SessionPage() {
         : fallback;
     const transcript = autoTranscript.length >= 20 ? autoTranscript : fallback;
 
-    // 空オブジェクトは送らない
     const d = identityToDemographics(identity);
     const demographics = d.ageRange || d.gender || d.hometown ? d : undefined;
 
     setT0(performance.now());
     try {
       const s = await create.mutateAsync({
-        transcript, // 必須を満たすための自動テキスト
+        transcript,
         strengths_top5: selected.length ? selected : undefined,
         demographics,
       } as any);
@@ -185,13 +347,29 @@ export default function SessionPage() {
         setMaxQuestions((s as any).loop.maxQuestions);
         setMinQuestions((s as any).loop.minQuestions ?? 0);
       }
+      //LLM/モックAPIから動的取得
+      try {
+        const qs = await fetchSeedQuestions(s.id, {
+          strengths_top5: selected.length ? selected : undefined,
+          demographics,
+          n: 5,
+        });
+        setSeedQs(qs);
+        setSeedAns({});
+        setSeedApplied(false);
+      } catch (e: any) {
+        // フォールバック：質問なしでも続行
+        console.warn("[seed-questions] fallback:", e?.message || e);
+        setSeedQs([]);
+      }
+
       showToast("セッションを開始しました", { type: "success" });
     } catch (e: any) {
       showToast(`開始に失敗：${String(e?.message || e)}`, { type: "error" });
     }
   };
 
-  // 次の質問を取得
+  // タイプ質問：次の質問
   const fetchNext = async () => {
     if (!sessionId) return;
     setLoopBusy(true);
@@ -212,7 +390,7 @@ export default function SessionPage() {
     }
   };
 
-  // 回答送信
+  // タイプ質問：回答
   const answer = async (
     qId: string,
     a: "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO"
@@ -304,39 +482,15 @@ export default function SessionPage() {
     setLoopStarted(false);
     setLoopState(null);
     setLoopError(null);
-    setRefineText("");
     setTimeToFirst(null);
     setSelected([]);
     setQuery("");
     setIdentity({} as IdentityValue);
+    setSeedQs([]);
+    setSeedAns({});
+    setSeedApplied(false);
     create.reset();
-    advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
-  };
-
-  // 次の一歩クリック → コピー & ローカル計測
-  const onClickSuggestion = async (text: string) => {
-    try {
-      await navigator.clipboard?.writeText(text);
-      showToast("コピーしました", { type: "success" });
-    } catch {
-      showToast("コピーできませんでした", { type: "error" });
-    }
-    const key = "metrics_suggestion_clicks";
-    const n = Number(localStorage.getItem(key) || "0") + 1;
-    localStorage.setItem(key, String(n));
-    console.debug("[metrics] suggestion_click_rate increment", { total: n });
-  };
-
-  const handleShare = async () => {
-    if (!sessionId) return;
-    const url = `${window.location.origin}/app/coach?session=${sessionId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      showToast("共有リンクをコピーしました", { type: "success" });
-    } catch {
-      prompt("以下のURLを手動でコピーしてください。", url);
-    }
   };
 
   // キーボードショートカット（1..5で回答）
@@ -411,8 +565,17 @@ export default function SessionPage() {
   };
 
   const PersonaView = ({ profile }: { profile: StrengthProfile }) => {
+    const headline = buildHeadline(profile, posterior);
+    const prompts = buildOneOnOnePrompts(profile);
+    const ngs = buildNGs(profile);
+
     return (
       <div className="space-y-4">
+        <div className="p-3 border rounded bg-gray-50">
+          <div className="text-sm text-gray-600 mb-1">人物像（断定）</div>
+          <div className="font-semibold">{headline}</div>
+        </div>
+
         {(profile.summarizedTraits?.length ||
           profile.summarizedManagement?.length) && (
           <div className="grid sm:grid-cols-2 gap-3">
@@ -436,6 +599,28 @@ export default function SessionPage() {
                 </ul>
               </div>
             ) : null}
+          </div>
+        )}
+
+        {prompts.length > 0 && (
+          <div className="p-3 border rounded">
+            <div className="font-medium mb-1">次の1on1で使う質問</div>
+            <ul className="list-disc pl-5">
+              {prompts.map((q, i) => (
+                <li key={i}>{q}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {ngs.length > 0 && (
+          <div className="p-3 border rounded">
+            <div className="font-medium mb-1">NG行動（避けたいこと）</div>
+            <ul className="list-disc pl-5">
+              {ngs.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -475,20 +660,18 @@ export default function SessionPage() {
   return (
     <div className="mx-auto max-w-3xl p-4 space-y-6">
       <h1 className="text-2xl font-bold">
-        Coach セッション (MVP){" "}
-        <span title="Top5→軽い事前確率→質問で更新→確信度で確定">ℹ️</span>
+        1on1支援エージェント (MVP){" "}
+        <span title="Top5→事前確率→質問で更新→確信度で確定">ℹ️</span>
       </h1>
 
-      {/* ===== 初期入力（悩み領域／会話ログは削除） ===== */}
+      {/* ===== 初期入力 ===== */}
       {!sessionId && (
         <div className="space-y-3" aria-busy={create.isPending}>
-          {/* 基本属性（任意） */}
           <section className="space-y-2">
             <h2 className="font-medium">基本属性（任意）</h2>
             <IdentityPicker value={identity} onChange={setIdentity} />
           </section>
 
-          {/* Top5 選択 */}
           <div className="space-y-2">
             <div className="flex items-end justify-between gap-2">
               <label className="font-medium">
@@ -574,15 +757,24 @@ export default function SessionPage() {
         </div>
       )}
 
-      {/* ===== 初回結果（要約・仮説などは非表示、Persona & 次の一歩のみ） ===== */}
+      {/* ===== セッション出力（ペルソナ中心） ===== */}
       {sessionId && (sessionData || create.data) && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="text-sm text-gray-600">
             セッションID: <code>{sessionId}</code>
             {timeToFirst !== null && <span> / 初回出力: {timeToFirst} ms</span>}
             <button
               className="ml-2 px-2 py-1 border rounded text-xs hover:bg-gray-50"
-              onClick={handleShare}
+              onClick={async () => {
+                if (!sessionId) return;
+                const url = `${window.location.origin}/app/coach?session=${sessionId}`;
+                try {
+                  await navigator.clipboard.writeText(url);
+                  showToast("共有リンクをコピーしました", { type: "success" });
+                } catch {
+                  prompt("以下のURLを手動でコピーしてください。", url);
+                }
+              }}
               disabled={!sessionId}
               aria-label="共有リンクをコピー"
             >
@@ -590,7 +782,96 @@ export default function SessionPage() {
             </button>
           </div>
 
-          {/* ストレングス（ベータ） */}
+          {/* 1) エントリ質問（Top5起点） */}
+          {seedQs.length > 0 && !seedApplied && (
+            <section className="space-y-2 p-3 border rounded">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">
+                  資質ベースの質問（精度アップ）
+                </h2>
+                <div className="text-xs text-gray-600">
+                  ※人事評価には使いません
+                </div>
+              </div>
+              <div className="space-y-3">
+                {seedQs.map((q) => (
+                  <div key={q.id} className="p-2 rounded border">
+                    <div className="mb-2">
+                      <span className="text-xs bg-gray-100 px-2 py-0.5 rounded mr-2">
+                        {q.theme}
+                      </span>
+                      {q.text}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        ["YES", "PROB_YES", "UNKNOWN", "PROB_NO", "NO"] as const
+                      ).map((k) => (
+                        <label
+                          key={k}
+                          className="flex items-center gap-1 text-sm"
+                        >
+                          <input
+                            type="radio"
+                            name={q.id}
+                            checked={seedAns[q.id] === k}
+                            onChange={() =>
+                              setSeedAns((prev) => ({ ...prev, [q.id]: k }))
+                            }
+                          />
+                          {ANSWER_LABEL[k]}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="rounded border px-3 py-2"
+                  onClick={() => {
+                    setSeedAns({});
+                    showToast("選択をクリアしました", { type: "info" });
+                  }}
+                >
+                  クリア
+                </button>
+                <button
+                  className="rounded bg-black text-white px-3 py-2 disabled:opacity-50"
+                  disabled={!Object.keys(seedAns).length || !sessionId}
+                  onClick={async () => {
+                    try {
+                      // 回答を /actions に投げて出力をチューニング
+                      const filled = seedQs
+                        .filter((q) => seedAns[q.id])
+                        .map((q) => ({ q, a: seedAns[q.id]! }));
+                      const instruction =
+                        formatSeedAnswersForInstruction(filled);
+                      const res = await fetch(
+                        `/api/sessions/${sessionId}/actions`,
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ instruction }),
+                        }
+                      );
+                      const data = await res.json();
+                      if (!res.ok)
+                        throw new Error(data?.message || "反映に失敗しました");
+                      setSessionData(data as any);
+                      setSeedApplied(true);
+                      showToast("回答を反映しました", { type: "success" });
+                    } catch (e: any) {
+                      showToast(String(e?.message || e), { type: "error" });
+                    }
+                  }}
+                >
+                  反映する
+                </button>
+              </div>
+            </section>
+          )}
+
+          {/* 2) ストレングス（ベータ）＝ペルソナ＋1on1カード */}
           {(() => {
             const persona = (sessionData?.output ?? create.data!.output)
               .persona;
@@ -603,70 +884,7 @@ export default function SessionPage() {
               </section>
             ) : null;
           })()}
-
-          {/* 次の一歩 */}
-          <section className="space-y-2">
-            <h2 className="text-xl font-semibold">次の一歩</h2>
-            <ul className="pl-0">
-              {(sessionData?.output ?? create.data!.output).next_steps.map(
-                (s, i) => (
-                  <li key={i} className="list-none">
-                    <button
-                      className="underline rounded px-1 py-0.5 hover:bg-gray-100"
-                      onClick={() => onClickSuggestion(s)}
-                      aria-label={`次の一歩をコピー：${s}`}
-                    >
-                      {s}
-                    </button>
-                  </li>
-                )
-              )}
-            </ul>
-          </section>
         </div>
-      )}
-
-      {/* ===== 追加指示（要約に追記はされますがUIでは要約は今は非表示） ===== */}
-      {sessionId && (
-        <section className="space-y-2">
-          <h3 className="font-medium">追加の指示で更新</h3>
-          <div className="flex gap-2">
-            <input
-              aria-label="追加指示"
-              className="flex-1 rounded border p-2"
-              placeholder="例：面接準備向けにSTARで要約して"
-              value={refineText}
-              onChange={(e) => setRefineText(e.target.value)}
-            />
-            <button
-              aria-label="更新を送信"
-              className="rounded border px-3 py-2"
-              onClick={async () => {
-                try {
-                  const s = await advance.mutateAsync(refineText);
-                  setSessionData(s as any);
-                  setRefineText("");
-                  showToast("更新しました", { type: "success" });
-                } catch {}
-              }}
-              disabled={advance.isPending || !refineText}
-            >
-              {advance.isPending ? "送信中…" : "更新"}
-            </button>
-            <button
-              aria-label="クリア"
-              className="rounded border px-3 py-2"
-              onClick={resetAll}
-            >
-              クリア
-            </button>
-          </div>
-          {advance.isError && (
-            <pre className="text-red-600 text-sm">
-              {String((advance.error as any)?.message || "更新に失敗しました")}
-            </pre>
-          )}
-        </section>
       )}
 
       {/* ===== タイプ推定（ベータ） ===== */}
@@ -744,7 +962,6 @@ export default function SessionPage() {
             </div>
           )}
 
-          {/* 進行中 */}
           {loopStarted &&
             loopState &&
             "done" in loopState &&
@@ -816,7 +1033,6 @@ export default function SessionPage() {
               </div>
             )}
 
-          {/* 確定 */}
           {loopStarted &&
             loopState &&
             "done" in loopState &&
@@ -835,7 +1051,16 @@ export default function SessionPage() {
                       <li key={i} className="list-none">
                         <button
                           className="underline rounded px-1 py-0.5 hover:bg-gray-100"
-                          onClick={() => onClickSuggestion(s)}
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard?.writeText(s);
+                              showToast("コピーしました", { type: "success" });
+                            } catch {
+                              showToast("コピーできませんでした", {
+                                type: "error",
+                              });
+                            }
+                          }}
                         >
                           {s}
                         </button>
@@ -843,26 +1068,6 @@ export default function SessionPage() {
                     ))}
                   </ul>
                 </div>
-
-                {loopState.evidence?.length > 0 && (
-                  <div className="space-y-1">
-                    <div className="font-medium">
-                      根拠の内訳（影響が大きかった回答）
-                    </div>
-                    <ul className="list-disc pl-6 text-sm">
-                      {loopState.evidence.map((e, i) => (
-                        <li key={i}>
-                          <span className="font-medium">Q:</span> {e.text} ／
-                          <span className="font-medium">A:</span>{" "}
-                          {ANSWER_LABEL[e.answer]} ／
-                          <span className="text-gray-600">
-                            確信度寄与: {(e.delta * 100).toFixed(1)}%
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
 
                 <div className="flex gap-2">
                   <button

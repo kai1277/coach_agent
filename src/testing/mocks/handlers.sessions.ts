@@ -22,17 +22,6 @@ const { enabled: LLM_ENABLED, client: LLM } = createLLMClient();
 
 const STRENGTH_SET = new Set<string>(STRENGTH_THEMES as readonly string[]);
 
-/**
- * Mock API
- * - 事前確率：文脈/Top5 から軽くバイアス（engine.priorFromContextAndTop5）
- * - demographics(ageRange/gender/hometown) から微小バイアスを追加
- * - ベイズ更新（engine.recomputePosterior）
- * - 質問選択＝情報利得（engine.pickNextQuestion）
- * - しきい値/上限/minQuestions で確定（※初回は必ず1問出す）
- * - evidence（質問ごとの寄与度=情報利得）を返す
- * - テスト時はランダム/遅延を最小化
- */
-
 // ---- テスト判定 ----
 const env = (import.meta as any).env ?? {};
 const IS_TEST = env.MODE === "test" || !!env.VITEST;
@@ -50,12 +39,10 @@ function biasWithDemographics(
   let m = { ...p };
   const bump = (k: TypeKey, v: number) => (m[k] = (m[k] ?? 0) + v);
 
-  // 性別が入っているだけで、対人配慮/安定をほんの少し底上げ
   if (demographics.gender) {
     bump("TYPE_EMPATHY", 0.03);
     bump("TYPE_STABILITY", 0.02);
   }
-  // 年齢帯：若年→戦略/実行をわずかに、中高年→安定/探究をわずかに
   if (demographics.ageRange) {
     const age = demographics.ageRange;
     if (/10|20/.test(age)) {
@@ -68,13 +55,47 @@ function biasWithDemographics(
       bump("TYPE_ANALYTICAL", 0.02);
     }
   }
-  // 出身地ヒント
   if (demographics.hometown) {
     if (/地方|ローカル/.test(demographics.hometown)) {
       bump("TYPE_STABILITY", 0.03);
     }
   }
   return normalize(m);
+}
+
+// ---- フォールバック用：ローカルで簡易生成 ----
+function localSeedQuestionsFromThemes(themes: string[]) {
+  const mk = (i: number, theme: string, text: string) => ({
+    id: `SQ${i}`,
+    theme,
+    text,
+  });
+  const out: { id: string; theme: string; text: string }[] = [];
+  let i = 1;
+  for (const t of themes.slice(0, 5)) {
+    if (t === "原点思考")
+      out.push(mk(i++, t, "歴史や由来を調べるのはワクワクしますか？"));
+    else if (t === "戦略性")
+      out.push(mk(i++, t, "選択肢を並べて最善ルートを素早く選べますか？"));
+    else if (t === "着想")
+      out.push(mk(i++, t, "新しい切り口を思いつく瞬間がよくありますか？"));
+    else if (t === "コミュニケーション")
+      out.push(mk(i++, t, "要点をつかんで人に伝えるのは得意ですか？"));
+    else if (t === "包含")
+      out.push(mk(i++, t, "輪から外れた人を自然に巻き込みにいきますか？"));
+    else if (t === "ポジティブ")
+      out.push(mk(i++, t, "場の空気を明るくする役割を自分で担うほうですか？"));
+    else if (t === "分析思考")
+      out.push(mk(i++, t, "まず根拠やデータから考えるほうですか？"));
+    else if (t === "回復志向")
+      out.push(mk(i++, t, "問題の原因を特定し直すのが得意ですか？"));
+    else if (t === "規律性")
+      out.push(mk(i++, t, "決めたルーチンを崩さずに続けられますか？"));
+    else if (t === "目標志向")
+      out.push(mk(i++, t, "ゴールから逆算して優先順位を切れるほうですか？"));
+    else out.push(mk(i++, t, `「${t}」っぽさを自覚する瞬間は多いですか？`));
+  }
+  return out;
 }
 
 // ---- セッション状態 ----
@@ -103,7 +124,7 @@ let SEQ = 1;
 const uid = () =>
   `sess_${(SEQ++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-// ---- posterior 再計算（engine を利用）----
+// ---- posterior 再計算 ----
 function recalc(sess: Session) {
   const prior0 = priorFromContextAndTop5(
     sess.context ?? null,
@@ -154,7 +175,7 @@ export const handlers = [
       );
     }
 
-    // strengths_top5 検証（最大5/重複不可/34資質ホワイトリスト）
+    // strengths_top5 検証
     let strengths: string[] | undefined = undefined;
     if (Array.isArray(body.strengths_top5)) {
       const raw = body.strengths_top5.map(String);
@@ -196,7 +217,7 @@ export const handlers = [
     );
     const prior = biasWithDemographics(prior0, body.demographics);
 
-    // Top5 から StrengthProfile（persona）を1回だけ作るmh
+    // persona は Top5 から一度だけ作る
     const persona =
       strengths && strengths.length > 0
         ? buildStrengthProfile(strengths)
@@ -210,43 +231,37 @@ export const handlers = [
       strengths_top5: strengths,
       output: {
         summary: `【要約】${transcript.slice(0, 60)}…`,
-        hypotheses: [
-          "コミュニケーション設計（目的/判断基準）の不一致がある",
-          "期待と責任範囲の暗黙のズレが継続している",
-          "短期と長期で優先度の見解差がある",
-        ],
+        hypotheses: [],
         next_steps: [
           "次回定例の目的と期待アウトプットを明文化して共有",
           "判断基準（KPI/制約）を1枚で整理",
-          "関係者の期待値ヒアリングを3名に実施",
         ],
-        citations: [{ text: "会話ログ先頭", anchor: "#t=0:00" }],
-        counter_questions: [
-          "本当に目的が不明確？例外的に不明だった会だけでは？",
-          "判断基準は他文書に明記されていないか？",
-        ],
+        citations: [],
         persona,
       },
       loop: { threshold: 0.9, maxQuestions: 8, minQuestions: 0 },
       answers: [],
       askedCount: 0,
       posterior: prior,
-      demographics: body.demographics, // 保持（任意）
+      demographics: body.demographics,
     };
 
-    // LLM が有効ならサマリなどを生成して上書き（persona は維持/付け直し）
+    // LLM 有効なら出力を上書き（persona は維持）
     if (LLM_ENABLED) {
       try {
-        const out = await LLM.generateCoachOutput({
+        const out = await LLM!.generateCoachOutput({
           transcript: session.transcript,
           context: session.context ?? null,
           strengths_top5: session.strengths_top5 ?? null,
           instruction: null,
         });
-        session.output = out;
-        if (persona) session.output.persona = persona;
+        session.output = {
+          ...session.output,
+          ...out,
+          persona: session.output.persona,
+        };
       } catch {
-        // フォールバック：初期生成のまま
+        /* noop */
       }
     }
 
@@ -261,6 +276,55 @@ export const handlers = [
       { status: 201 }
     );
   }),
+
+  // NEW: 質問生成（LLM→失敗時ローカル）
+  http.post(
+    "*/api/sessions/:id/seed-questions",
+    async ({ params, request }) => {
+      if (!IS_TEST) await delay(200 + Math.random() * 300);
+      const sess = SESSIONS.get(String(params.id));
+      if (!sess) {
+        return HttpResponse.json(
+          { code: "NOT_FOUND", message: "session not found" },
+          { status: 404 }
+        );
+      }
+      const body = (await request.json()) as {
+        strengths_top5?: string[];
+        demographics?: {
+          ageRange?: string;
+          gender?: string;
+          hometown?: string;
+        };
+        n?: number;
+      };
+
+      // LLM 優先、失敗ならフォールバック
+      if (LLM_ENABLED && LLM?.generateSeedQuestions) {
+        try {
+          const { questions } = await LLM.generateSeedQuestions({
+            strengths_top5: body.strengths_top5 ?? sess.strengths_top5 ?? [],
+            demographics: body.demographics ?? sess.demographics ?? {},
+            n: body.n ?? 5,
+          });
+          // id付与
+          const withId = questions.map((q, i) => ({
+            id: `SQ${i + 1}`,
+            theme: q.theme,
+            text: q.text,
+          }));
+          return HttpResponse.json({ questions: withId });
+        } catch (e: any) {
+          // フォールバック
+        }
+      }
+      const baseThemes = (body.strengths_top5 ?? sess.strengths_top5 ?? []).map(
+        String
+      );
+      const local = localSeedQuestionsFromThemes(baseThemes);
+      return HttpResponse.json({ questions: local });
+    }
+  ),
 
   // セッション取得
   http.get("*/api/sessions/:id", async ({ params }) => {
@@ -279,10 +343,9 @@ export const handlers = [
     });
   }),
 
-  // 追加アクション（LLM 再生成フック：instruction を渡して出力を上書き）
+  // 追加アクション
   http.post("*/api/sessions/:id/actions", async ({ params, request }) => {
     if (!IS_TEST) await delay(200 + Math.random() * 300);
-
     const sess = SESSIONS.get(String(params.id));
     if (!sess)
       return HttpResponse.json(
@@ -295,28 +358,26 @@ export const handlers = [
 
     if (LLM_ENABLED && ins.length > 0) {
       try {
-        const out = await LLM.generateCoachOutput({
+        const out = await LLM!.generateCoachOutput({
           transcript: sess.transcript,
           context: sess.context ?? null,
           strengths_top5: sess.strengths_top5 ?? null,
           instruction: ins,
         });
-        sess.output = out;
-        // persona は Top5 からの派生なので付け直す
+        sess.output = { ...sess.output, ...out };
         if (sess.strengths_top5?.length) {
           sess.output.persona = buildStrengthProfile(sess.strengths_top5);
         }
       } catch {
-        // 失敗時は軽微更新でフォールバック
         if (ins) {
-          sess.output.summary = `【更新】${ins}\n\n` + sess.output.summary;
+          sess.output.summary =
+            `【更新】${ins}\n\n` + (sess.output.summary || "");
           sess.output.next_steps = [
             `指示反映：${ins} に沿ってまず1歩動く`,
             ...sess.output.next_steps.slice(0, 2),
           ];
         }
       }
-
       return HttpResponse.json({
         id: sess.id,
         createdAt: sess.createdAt,
@@ -324,15 +385,13 @@ export const handlers = [
       });
     }
 
-    // LLMが無効 or instruction が空：従来どおりの軽微更新
     if (ins) {
-      sess.output.summary = `【更新】${ins}\n\n` + sess.output.summary;
+      sess.output.summary = `【更新】${ins}\n\n` + (sess.output.summary || "");
       sess.output.next_steps = [
         `指示反映：${ins} に沿ってまず1歩動く`,
         ...sess.output.next_steps.slice(0, 2),
       ];
     }
-
     return HttpResponse.json({
       id: sess.id,
       createdAt: sess.createdAt,
@@ -406,7 +465,6 @@ export const handlers = [
     const post = sess.posterior;
     const top = TYPES.reduce((a, b) => (post[a] >= post[b] ? a : b));
 
-    // 初回は無条件で質問を返す
     if (sess.askedCount === 0) {
       const answeredIds = new Set<string>();
       const { question } = pickNextQuestion(
@@ -424,7 +482,6 @@ export const handlers = [
       });
     }
 
-    // 2問目以降の通常ロジック
     const canStop =
       sess.askedCount >= (sess.loop.minQuestions ?? 0) &&
       (post[top] >= sess.loop.threshold ||
@@ -487,7 +544,6 @@ export const handlers = [
         { status: 422 }
       );
 
-    // Answer5 バリデーション（ユニオン型）
     const isAnswer5 = (x: any): x is Answer5 =>
       x === "YES" ||
       x === "PROB_YES" ||

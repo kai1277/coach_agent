@@ -1,50 +1,101 @@
-import type { SessionOutput } from "../../types/api";
-import { buildCoachPrompt, redactPII } from "./prompt";
+/**
+ * LLM/Dify クライアント（ブラウザMSWのモックからも使う前提の軽実装）
+ * - generateCoachOutput(...) は既存互換
+ * - generateSeedQuestions(...) を追加
+ *
+ * .env 例:
+ *  VITE_LLM_PROVIDER=dify
+ *  VITE_DIFY_SEED_API=https://api.dify.ai/v1/workflows/run        // or Apps endpoint
+ *  VITE_DIFY_API_KEY=xxxx
+ */
 
-type GenerateInput = {
-  transcript: string;
-  context: string | null;
-  strengths_top5: string[] | null;
-  instruction?: string | null;
-};
+export type SeedQuestion = { theme: string; text: string };
 
 export function createLLMClient() {
   const env: any = (import.meta as any)?.env ?? {};
-  const enabled = String(env.LLM_ENABLED ?? "").toLowerCase() === "true";
+  const provider = env.VITE_LLM_PROVIDER || process?.env?.LLM_PROVIDER || "";
+  const difySeedApi =
+    env.VITE_DIFY_SEED_API || process?.env?.DIFY_SEED_API || "";
+  const difyApiKey = env.VITE_DIFY_API_KEY || process?.env?.DIFY_API_KEY || "";
 
-  const client = {
-    async generateCoachOutput(input: GenerateInput): Promise<SessionOutput> {
-      // ここで“必ず”プロンプトを構築（将来の本接続時にこの文字列をPOST）
-      const prompt = buildCoachPrompt(input);
-      void prompt; // いまは未使用だが、実接続時に使う
+  const enabled = provider === "dify" && !!difySeedApi && !!difyApiKey;
 
-      // ダミーでも PII マスクは適用しておく（UIへの戻り値にも反映）
-      const masked = redactPII(input.transcript);
-      const head = input.instruction
-        ? `【指示反映】${input.instruction}\n\n`
-        : "";
-      const baseSummary = `${head}【要約】${masked.slice(0, 60)}…`;
+  async function postJSON(url: string, body: any) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${difyApiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      const msg = json?.message || json?.error || "LLM request failed";
+      throw new Error(msg);
+    }
+    return json;
+  }
 
-      return {
-        summary: baseSummary,
-        hypotheses: [
-          "コミュニケーション設計（目的/判断基準）の不一致がある",
-          "期待と責任範囲の暗黙のズレが継続している",
-          "短期と長期で優先度の見解差がある",
-        ],
-        next_steps: [
-          "次回定例の目的と期待アウトプットを明文化して共有",
-          "判断基準（KPI/制約）を1枚で整理",
-          "関係者の期待値ヒアリングを3名に実施",
-        ],
-        citations: [{ text: "会話ログ先頭", anchor: "#t=0:00" }],
-        counter_questions: [
-          "本当に目的が不明確？例外的に不明だった会だけでは？",
-          "判断基準は他文書に明記されていないか？",
-        ],
-      };
-    },
-  };
+  const client = enabled
+    ? {
+        // 既存：成果物生成（なければスキップ可）
+        async generateCoachOutput(args: {
+          transcript: string;
+          context: string | null;
+          strengths_top5: string[] | null;
+          instruction: string | null;
+        }) {
+          // ここは既存のまま/簡易ダミーでもOK（本件では未使用でもよい）
+          return {
+            summary: `要約: ${args.transcript.slice(0, 60)}…`,
+            hypotheses: ["仮説A", "仮説B"],
+            next_steps: ["次の一歩A", "次の一歩B"],
+            citations: [],
+            counter_questions: ["反証1"],
+          };
+        },
+
+        // 新規：Top5(+demographics)から「資質ベース質問」を生成
+        async generateSeedQuestions(input: {
+          strengths_top5?: string[];
+          demographics?: {
+            ageRange?: string;
+            gender?: string;
+            hometown?: string;
+          };
+          n?: number; // 目安の質問数
+        }): Promise<{ questions: SeedQuestion[] }> {
+          const n = input.n ?? 5;
+          // Difyのワークフロー/アプリに合わせてペイロードを調整してね
+          const payload = {
+            inputs: {
+              strengths_top5: input.strengths_top5 ?? [],
+              demographics: input.demographics ?? {},
+              n,
+            },
+            response_mode: "blocking",
+          };
+          const json = await postJSON(difySeedApi, payload);
+
+          // 期待する返り値に正規化（WorkflowのSchemaに合わせて編集）
+          const items: any[] =
+            json?.data?.outputs?.questions ||
+            json?.questions ||
+            json?.data ||
+            [];
+
+          const questions: SeedQuestion[] = items
+            .map((it) => ({
+              theme: String(it.theme || it.tag || "不明"),
+              text: String(it.text || it.question || ""),
+            }))
+            .filter((q) => q.text);
+
+          return { questions };
+        },
+      }
+    : null;
 
   return { enabled, client };
 }
