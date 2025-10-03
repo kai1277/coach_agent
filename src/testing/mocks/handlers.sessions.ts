@@ -5,15 +5,16 @@ import {
   STRENGTH2TYPE,
 } from "../../features/coach/engine/constants";
 import {
+  // 追加：事前確率/質問選択/更新ロジックを明示import
   priorFromContextAndTop5,
   pickNextQuestion,
   recomputePosterior,
-  nextStepsByType,
   TYPE_LABEL,
   TYPES,
   type Question,
   normalize,
 } from "../../features/coach/engine/inference";
+import { buildAssertiveReco } from "../../features/coach/content/assertive_reco";
 import type { Answer5, TypeKey, SessionOutput } from "../../types/api";
 import { createLLMClient } from "../../features/coach/llm/client";
 import { buildStrengthProfile } from "../../features/coach/content/strengths_persona";
@@ -307,7 +308,7 @@ export const handlers = [
             demographics: body.demographics ?? sess.demographics ?? {},
             n: body.n ?? 5,
           });
-          // id付与
+          // id付与（型注釈で any を回避）
           const withId = questions.map(
             (q: { theme: string; text: string }, i: number) => ({
               id: `SQ${i + 1}`,
@@ -316,7 +317,7 @@ export const handlers = [
             })
           );
           return HttpResponse.json({ questions: withId });
-        } catch (e: any) {
+        } catch {
           // フォールバック
         }
       }
@@ -489,7 +490,11 @@ export const handlers = [
       (post[top] >= sess.loop.threshold ||
         sess.askedCount >= sess.loop.maxQuestions);
     if (canStop) {
-      const steps = nextStepsByType(top);
+      // ★ 断定テンプレで置き換え
+      const { headline, bullets } = buildAssertiveReco(top, {
+        strengths: sess.strengths_top5,
+        confidence: post[top],
+      });
       const evidence = [...sess.answers]
         .sort((a, b) => b.delta - a.delta)
         .slice(0, 5)
@@ -503,7 +508,8 @@ export const handlers = [
       return HttpResponse.json({
         done: true,
         top: { id: top, label: TYPE_LABEL[top], confidence: post[top] },
-        next_steps: steps,
+        headline, // ★追加
+        next_steps: bullets, // ★断定強めリコメンド
         asked: sess.askedCount,
         max: sess.loop.maxQuestions,
         posterior: post,
@@ -570,14 +576,19 @@ export const handlers = [
     const hitThreshold = post[top] >= sess.loop.threshold;
     const hitMax = sess.askedCount >= sess.loop.maxQuestions;
     if (!mustAskMore && (hitThreshold || hitMax)) {
-      const steps = nextStepsByType(top);
+      // ★ 断定テンプレで置き換え
+      const { headline, bullets } = buildAssertiveReco(top, {
+        strengths: sess.strengths_top5,
+        confidence: post[top],
+      });
       const evidence = [...sess.answers]
         .sort((a, b) => b.delta - a.delta)
         .slice(0, 5);
       return HttpResponse.json({
         done: true,
         top: { id: top, label: TYPE_LABEL[top], confidence: post[top] },
-        next_steps: steps,
+        headline, // ★追加
+        next_steps: bullets, // ★断定強めリコメンド
         asked: sess.askedCount,
         max: sess.loop.maxQuestions,
         posterior: post,

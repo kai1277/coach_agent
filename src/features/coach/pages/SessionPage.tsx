@@ -985,6 +985,12 @@ export default function SessionPage() {
             "done" in loopState &&
             loopState.done === true && (
               <div className="space-y-3">
+                {/* ★ 追加：断定ヘッドライン */}
+                {(loopState as any).headline && (
+                  <div className="text-lg font-semibold">
+                    {(loopState as any).headline}
+                  </div>
+                )}
                 <div className="text-green-700 font-medium">
                   予測タイプ：{loopState.top.label}（確信度{" "}
                   {(loopState.top.confidence * 100).toFixed(0)}%）
