@@ -15,7 +15,7 @@ import {
   normalize,
 } from "../../features/coach/engine/inference";
 import type { Answer5, TypeKey, SessionOutput } from "../../types/api";
-import { createLLMClient } from "../../server/services/llm";
+import { createLLMClient } from "../../features/coach/llm/client";
 import { buildStrengthProfile } from "../../features/coach/content/strengths_persona";
 
 const { enabled: LLM_ENABLED, client: LLM } = createLLMClient();

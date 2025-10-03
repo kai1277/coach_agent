@@ -9,8 +9,7 @@ import { ToastProvider } from "./ui/ToastProvider";
 // MSW: 開発時 + モックモードのみ 起動
 const MODE = (import.meta as any).env?.VITE_API_MODE ?? "mock";
 if (import.meta.env.DEV && MODE !== "real") {
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  import("./testing/mocks/dev-boot");
+  import("./testing/mocks/dev-boot"); // ← ここが走ればOK
 }
 
 const qc = new QueryClient();
