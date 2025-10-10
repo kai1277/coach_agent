@@ -10,7 +10,6 @@ export type SeedArgs = {
 export type SeedQuestion = { theme: string; text: string };
 
 export interface LLMClient {
-  // 既存: セッション出力の再生成（最小モック）
   generateCoachOutput(_: {
     transcript: string;
     context: string | null;
@@ -24,7 +23,6 @@ export interface LLMClient {
     counter_questions: string[];
   }>;
 
-  // 追加: 種質問の生成（Dify/他のLLM接続）
   generateSeedQuestions?(
     args: SeedArgs
   ): Promise<{ questions: SeedQuestion[] }>;
@@ -35,8 +33,11 @@ function sanitizeQuestions(qs: any, n: number): SeedQuestion[] {
   const out: SeedQuestion[] = [];
   const seen = new Set<string>();
   for (const it of qs) {
-    const theme = String(it?.theme ?? "").trim() || "汎用";
-    const text = String(it?.text ?? it?.question ?? "").trim();
+    const theme =
+      String(
+        it?.theme ?? it?.strength ?? it?.trait ?? it?.category ?? ""
+      ).trim() || "汎用";
+    const text = String(it?.text ?? it?.question ?? it?.q ?? "").trim();
     if (!text) continue;
     const key = `${theme}::${text}`;
     if (seen.has(key)) continue;
@@ -48,25 +49,25 @@ function sanitizeQuestions(qs: any, n: number): SeedQuestion[] {
 }
 
 export function createLLMClient(): { enabled: boolean; client: LLMClient } {
-  const provider = (import.meta as any).env?.VITE_LLM_PROVIDER as
-    | string
-    | undefined;
-  const difyEndpoint = (import.meta as any).env?.VITE_DIFY_SEED_API as
-    | string
-    | undefined;
-  const difyApiKey = (import.meta as any).env?.VITE_DIFY_API_KEY as
-    | string
-    | undefined;
+  const env = (import.meta as any).env ?? {};
 
-  const enabled = !!(provider === "dify" && difyEndpoint && difyApiKey);
+  // ====== Dify 既存経路 ======
+  const provider = env.VITE_LLM_PROVIDER as string | undefined;
+  const difyEndpoint = env.VITE_DIFY_SEED_API as string | undefined;
+  const difyApiKey = env.VITE_DIFY_API_KEY as string | undefined;
 
-  // ---- Dify 実装 ----
-  if (enabled) {
+  // ====== OpenAI 直叩き（追加） ======
+  const openaiApiKey = env.VITE_OPENAI_API_KEY as string | undefined;
+  const openaiModel =
+    (env.VITE_OPENAI_MODEL as string | undefined) || "gpt-4o-mini";
+
+  // --- OpenAI 実装 ---
+  if (provider === "openai" && openaiApiKey) {
     const client: LLMClient = {
       async generateCoachOutput(_) {
-        // （最小実装：ここはモックでOK。既存の挙動を維持）
+        // 必要なら後でちゃんと実装。今はダミーを返す
         return {
-          summary: "（LLM要約のダミー）",
+          summary: "（OpenAI要約のダミー）",
           hypotheses: [],
           next_steps: [],
           citations: [],
@@ -77,10 +78,113 @@ export function createLLMClient(): { enabled: boolean; client: LLMClient } {
       async generateSeedQuestions(args: SeedArgs) {
         const n = Math.max(1, Math.min(Number(args?.n || 5), 10));
 
-        // ★ 重要：Dify 側が paragraph(=string) 入力のため、JSON 文字列にして送る
+        // LLMへの指示（Difyのsystemプロンプトを移植）
+        const system = `
+あなたは1on1のための質問設計エージェントです。
+入力の strengths_top5, demographics, n に基づき、
+{ "questions": [ { "theme": "<資質名>", "text": "<日本語の質問文>" }, ... ] }
+というJSONを厳密に返してください。余計な前置きや説明文は書かないでください。
+
+制約:
+- 配列長は n 件
+- text は具体的で、5〜40文字程度
+- theme は strengths_top5 から選ぶ（不足する場合は最も関連の強い資質名を推定して入れる）
+- 質問は YES/NO を想定した短い文にする（例: 「歴史の本が好きですか？」）
+`.trim();
+
+        const user = `
+ストレングス: ${JSON.stringify(args?.strengths_top5 ?? [])}
+属性: ${JSON.stringify(args?.demographics ?? {})}
+個数: ${n}
+出力は必ず JSON のみで返してください。
+`.trim();
+
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openaiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: openaiModel,
+            temperature: 0.2,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+          }),
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`OpenAI request failed: ${res.status} ${text}`);
+        }
+        const data = await res.json();
+
+        const content: string = data?.choices?.[0]?.message?.content ?? "";
+
+        // JSON抽出（素で返ってくればそのまま、雑に {} を探す）
+        let parsed: any = null;
+        const fence = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (fence) {
+          try {
+            parsed = JSON.parse(fence[1]);
+          } catch {}
+        }
+        if (!parsed) {
+          const start = content.indexOf("{");
+          const end = content.lastIndexOf("}");
+          if (start !== -1 && end !== -1 && end > start) {
+            try {
+              parsed = JSON.parse(content.slice(start, end + 1));
+            } catch {}
+          }
+        }
+        if (!parsed) {
+          try {
+            parsed = JSON.parse(content);
+          } catch {}
+        }
+
+        const raw =
+          parsed?.questions ??
+          parsed?.data?.outputs?.questions ??
+          parsed?.outputs?.questions ??
+          [];
+
+        let questions = sanitizeQuestions(raw, n);
+        if (!questions.length) {
+          questions = [
+            {
+              theme: "汎用",
+              text: "最近、仕事で一番うまくいったことは何ですか？",
+            },
+          ];
+        }
+        return { questions };
+      },
+    };
+
+    return { enabled: true, client };
+  }
+
+  // --- Dify 実装（既存） ---
+  const difyEnabled = !!(provider === "dify" && difyEndpoint && difyApiKey);
+  if (difyEnabled) {
+    const client: LLMClient = {
+      async generateCoachOutput(_) {
+        return {
+          summary: "（LLM要約のダミー）",
+          hypotheses: [],
+          next_steps: [],
+          citations: [],
+          counter_questions: [],
+        };
+      },
+      async generateSeedQuestions(args: SeedArgs) {
+        const n = Math.max(1, Math.min(Number(args?.n || 5), 10));
         const strengthsAsStr = JSON.stringify(args?.strengths_top5 ?? []);
         const demoAsStr = JSON.stringify(args?.demographics ?? {});
-
         const res = await fetch(difyEndpoint!, {
           method: "POST",
           headers: {
@@ -89,9 +193,9 @@ export function createLLMClient(): { enabled: boolean; client: LLMClient } {
           },
           body: JSON.stringify({
             inputs: {
-              strengths_top5: strengthsAsStr, // ← 文字列
-              demographics: demoAsStr, // ← 文字列
-              n, // ← 数値は数値のままでOK
+              strengths_top5: strengthsAsStr,
+              demographics: demoAsStr,
+              n,
             },
             response_mode: "blocking",
             user: "seed-generator",
@@ -103,25 +207,18 @@ export function createLLMClient(): { enabled: boolean; client: LLMClient } {
           throw new Error(`Dify request failed: ${res.status} ${text}`);
         }
         const data = await res.json();
-
-        // 出力の取り出し（outputs.questions / data.outputs.questions / questions のいずれか）
         const candidates = [
           data?.outputs?.questions,
           data?.data?.outputs?.questions,
           data?.questions,
         ];
         let raw: any = null;
-        for (const c of candidates) {
+        for (const c of candidates)
           if (c != null) {
             raw = c;
             break;
           }
-        }
-
-        // サニタイズ＋上限 n 件
         let questions = sanitizeQuestions(raw, n);
-
-        // フォールバック（最低1件）
         if (!questions.length) {
           questions = [
             {
@@ -130,15 +227,13 @@ export function createLLMClient(): { enabled: boolean; client: LLMClient } {
             },
           ];
         }
-
         return { questions };
       },
     };
-
     return { enabled: true, client };
   }
 
-  // ---- フォールバック（ローカルのみ）----
+  // --- フォールバック（ローカルのみ） ---
   const client: LLMClient = {
     async generateCoachOutput(_) {
       return {
@@ -149,8 +244,6 @@ export function createLLMClient(): { enabled: boolean; client: LLMClient } {
         counter_questions: [],
       };
     },
-    // generateSeedQuestions は未提供（ハンドラ側でフォールバック）
   };
-
   return { enabled: false, client };
 }
