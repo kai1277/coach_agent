@@ -14,6 +14,7 @@
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\""
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.75.0",
     "@tanstack/react-query": "^5.51.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
