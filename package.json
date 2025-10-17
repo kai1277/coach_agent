@@ -9,11 +9,17 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run -c vitest.config.ts",
-    "test:ui": "vitest -c vitest.config.ts"
+    "test:ui": "vitest -c vitest.config.ts",
+    "dev:server": "tsx watch src/server/index.ts",
+    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\""
   },
   "dependencies": {
     "@tanstack/react-query": "^5.51.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "msw": "^2.3.2",
+    "openai": "^6.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0"
@@ -24,8 +30,10 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.13",
+    "tsx": "^4.20.6",
     "typescript": "^5.4.5",
     "vite": "^5.4.0",
     "vitest": "^3.2.4"
