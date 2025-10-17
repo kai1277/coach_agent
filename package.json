@@ -22,6 +22,7 @@
     "msw": "^2.3.2",
     "openai": "^6.4.0",
     "pg": "^8.16.3",
+    "punycode": "^2.3.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",

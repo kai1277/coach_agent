@@ -5,7 +5,13 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // サーバ専用！フロントに出さない
+  process.env.SUPABASE_ANON_KEY!,
+  {
+    global: {
+      fetch: globalThis.fetch,  
+    },
+    auth: { persistSession: false, autoRefreshToken: false },
+  }
 );
 
 const app = express();
@@ -135,16 +141,10 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (sel.error) {
-      console.error('supabase select error', {
-        message: (sel.error as any).message,
-        details: (sel.error as any).details,
-        hint: (sel.error as any).hint,
-        code: (sel.error as any).code,
-      });
+    let row = sel.data; // ← ローカル変数に逃がす
 
-      // セッションが無い場合の暫定対応：空の行を作る（ID は既存UUID 前提）
-      // 作成したくない場合は 404 を 200 フォールバックにしても可
+    if (sel.error || !row) {
+      // 無ければ作成
       const ins = await supabase
         .from('sessions')
         .insert({
@@ -156,14 +156,14 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
         .select('id, metadata')
         .single();
 
-      if (ins.error) {
+      if (ins.error || !ins.data) {
         console.error('auto-insert error', ins.error);
         return res.status(500).json({ error: 'failed to create session' });
       }
-      sel.data = ins.data; // 以降の処理を続行
+      row = ins.data; // ← row に代入（sel.data へは代入しない）
     }
 
-    const meta = (sel.data?.metadata ?? {}) as Record<string, any>;
+    const meta = (row.metadata ?? {}) as Record<string, any>;
 
     const seed_questions: string[] = [
       '直近で「うまくいった」出来事は？',
@@ -206,7 +206,7 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
     return res.status(200).json({
       session_id: id,
       seed_questions,
-      next_steps, // ★ UIが参照するキーを必ず含める
+      next_steps,
     });
   } catch (e) {
     console.error('POST /api/sessions/:id/seed-questions internal error', e);
