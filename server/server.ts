@@ -40,7 +40,6 @@ app.post('/api/sessions', async (req, res) => {
 
     const ctx = context ?? 'general';
 
-    // sessions テーブルは少なくとも: id(UUID), title(text), summary(text|null), metadata(jsonb) を想定
     const { data, error } = await supabase
       .from('sessions')
       .insert({
@@ -50,7 +49,6 @@ app.post('/api/sessions', async (req, res) => {
           context: ctx,
           strengths_top5,
           demographics,
-          // 初期値を入れておくとUIが安全
           next_steps: [],
           seed_questions: []
         },
@@ -59,25 +57,22 @@ app.post('/api/sessions', async (req, res) => {
       .single();
 
     if (error) {
-        console.error('supabase insert error', {
-            message: error.message,
-            details: (error as any).details,
-            hint: (error as any).hint,
-            code: (error as any).code,
-        });
-        return res.status(500).json({ error: 'failed to create session' });
-        }
-        
+      console.error('supabase insert error', error);
+      return res.status(500).json({ error: 'failed to create session' });
+    }
 
     const next_steps = data.metadata?.next_steps ?? [];
-    return res.status(201).json({ id: data.id, summary: data.summary, next_steps });
+    // ★ ラップして返す
+    return res.status(201).json({
+      data: { id: data.id, summary: data.summary, next_steps }
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: 'internal error' });
   }
 });
 
-/** セッション取得: Supabaseから読み、UIが期待する next_steps を必ず返す */
+
 app.get('/api/sessions/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -89,23 +84,17 @@ app.get('/api/sessions/:id', async (req, res) => {
       .single();
 
     if (error) {
-      // PostgRESTの not-found は code=PGRST116 が多い
-      console.error('supabase select error', {
-        message: (error as any).message,
-        details: (error as any).details,
-        hint: (error as any).hint,
-        code: (error as any).code,
-      });
-
-      // ✨ 開発中は 404 でも UI が落ちないように「空オブジェクト」を 200 で返す
+      // 開発中フォールバック（UIが落ちないよう空で返す）
       return res.status(200).json({
-        id,
-        summary: null,
-        next_steps: [],
-        plan: { next_steps: [] },
-        seed_questions: [],
-        metadata: {},
-        _note: 'dev-fallback: session not found',
+        data: {
+          id,
+          summary: null,
+          next_steps: [],
+          plan: { next_steps: [] },
+          seed_questions: [],
+          metadata: {},
+          _note: 'dev-fallback: session not found',
+        },
       });
     }
 
@@ -113,19 +102,23 @@ app.get('/api/sessions/:id', async (req, res) => {
     const next_steps = Array.isArray(meta.next_steps) ? meta.next_steps : [];
     const seed_questions = Array.isArray(meta.seed_questions) ? meta.seed_questions : [];
 
+    // ★ ここを“ラップされた形”に
     return res.status(200).json({
-      id: data!.id,
-      summary: data!.summary ?? null,
-      next_steps,                 // ★ フロントが読むトップレベル
-      plan: { next_steps },       // ★ 念のため両方
-      seed_questions,
-      metadata: meta,
+      data: {
+        id: data!.id,
+        summary: data!.summary ?? null,
+        next_steps,
+        plan: { next_steps },
+        seed_questions,
+        metadata: meta,
+      },
     });
   } catch (e) {
     console.error('GET /api/sessions/:id internal error', e);
     return res.status(500).json({ error: 'internal error' });
   }
 });
+
 
 
 app.post('/api/sessions/:id/seed-questions', async (req, res) => {
@@ -204,12 +197,24 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
     }
 
     return res.status(200).json({
-      session_id: id,
-      seed_questions,
-      next_steps,
+        data: {
+            session_id: id,
+            seed_questions,
+            next_steps,
+        },
     });
   } catch (e) {
     console.error('POST /api/sessions/:id/seed-questions internal error', e);
     return res.status(500).json({ error: 'internal error' });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`[server] up on http://localhost:${PORT}`);
+}).on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[server] ポート ${PORT} は使用中です。別のPORTを使うか、占有プロセスを終了してください。`);
+  } else {
+    console.error('[server] listen error:', err);
   }
 });

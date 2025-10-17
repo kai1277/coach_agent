@@ -20,41 +20,68 @@ export async function apiClient(
   input: RequestInfo | URL,
   init: RequestInit = {}
 ): Promise<Response> {
-  // 文字列/URL のときは API_BASE を前置
-  const url =
-    typeof input === "string" || input instanceof URL
-      ? `${API_BASE}${input}`
-      : input;
+  // 文字列/URL のときは API_BASE を前置（ただし絶対URLならそのまま）
+  let url: string | URL = input as any;
+  if (typeof input === "string") {
+    const isAbsolute = /^https?:\/\//i.test(input);
+    url = isAbsolute ? input : `${API_BASE}${input}`;
+  } else if (input instanceof URL) {
+    url = input;
+  }
 
-  // Content-Type の補完（body がある場合のみ）
+  // Content-Type の補完（body があり、かつ FormData/Blob でない場合のみ）
   const headers = new Headers(init.headers);
-  if (!headers.has("Content-Type") && init.body) {
+  const hasBody = init.body != null;
+  const isMultipart =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+  const isBlob =
+    typeof Blob !== "undefined" && init.body instanceof Blob;
+
+  if (!headers.has("Content-Type") && hasBody && !isMultipart && !isBlob) {
     headers.set("Content-Type", "application/json");
   }
 
-  return fetch(url as any, { ...init, headers });
+  return fetch(url as any, {
+    // 認証Cookie等を使うなら有効化（必要なければ削除可）
+    // credentials: "include",
+    ...init,
+    headers,
+  });
 }
 
 /**
- * 既存の高級API: JSON パース & エラー整形まで面倒を見るヘルパ
+ * 高級API: JSON パース & エラー整形 & {data:...} アンラップ
  * - 下層では apiClient を利用
  */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiClient(path, init);
-  let data: any = null;
+
+  let json: any = null;
   try {
-    data = await res.json();
+    // レスポンスが空のケースもあり得る
+    json = await res.json();
   } catch {
-    /* no body */
+    json = null;
   }
+
   if (!res.ok) {
-    const err =
-      data && typeof data === "object" && "message" in data
-        ? (data as ApiError).message
-        : res.statusText;
-    throw new Error(err || "Request failed");
+    // よくある形 { error: '...', message: '...' } のどちらにも対応
+    const msg =
+      (json &&
+        typeof json === "object" &&
+        (("message" in json && (json as ApiError).message) ||
+          ("error" in json && String((json as any).error)))) ||
+      res.statusText ||
+      "Request failed";
+    throw new Error(msg);
   }
-  return data as T;
+  // console.debug('[request]', path, res.status, json);
+
+  // { data: {...} } にも素の {...} にも対応
+  const unwrapped =
+    json && typeof json === "object" && "data" in json ? (json as any).data : json;
+
+  return unwrapped as T;
 }
 
 /**
@@ -68,7 +95,7 @@ export const api = {
       transcript: string;
       context?: "人間関係" | "仕事" | "プライベート";
       strengths_top5?: StrengthTheme[];
-      demographics?: Demographics; // ★ 追加
+      demographics?: Demographics;
     }) {
       return request<Session>("/api/sessions", {
         method: "POST",
@@ -79,7 +106,6 @@ export const api = {
       return request<Session>(`/api/sessions/${id}`);
     },
     action(id: string, instruction: string) {
-      // サーバ側は { instruction } を期待
       return request<Session>(`/api/sessions/${id}/actions`, {
         method: "POST",
         body: JSON.stringify({ instruction }),
@@ -113,5 +139,3 @@ export const api = {
     },
   },
 };
-
-// 実APIへ切替したいとき：.env.* で VITE_API_MODE=real と VITE_API_BASE_URL を設定

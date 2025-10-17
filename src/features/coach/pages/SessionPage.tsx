@@ -48,21 +48,27 @@ type LoopFetch =
     };
 
 type SessionOutput = {
-  summary: string;
-  hypotheses: string[];
-  next_steps: string[];
-  citations: { text: string; anchor: string }[];
+  summary: string | null;
+  hypotheses?: string[];
+  next_steps?: string[];
+  citations?: { text: string; anchor: string }[];
   counter_questions?: string[];
   persona?: StrengthProfile;
 };
 type SessionDTO = {
   id: string;
-  createdAt: string;
-  output: SessionOutput;
+  createdAt?: string;
+  output?: SessionOutput; // 旧形のため optional
+  next_steps?: string[]; // 新形のため optional
+  plan?: { next_steps?: string[] };
+  seed_questions?: string[];
+  persona?: StrengthProfile;
+  summary?: string | null;
+  metadata?: any;
   loop?: { threshold: number; maxQuestions: number; minQuestions?: number };
 };
 
-// ★ 追加：種質問の型
+// 種質問の型
 type SeedQuestion = { id: string; theme: string; text: string };
 
 const LS_KEY = "coach_session_id";
@@ -90,6 +96,64 @@ function identityToDemographics(v: IdentityValue): Demographics {
       typeof hometownRaw === "string" && hometownRaw.trim()
         ? hometownRaw.trim()
         : undefined,
+  };
+}
+
+/** レスポンス形の揺れを吸収して共通形に揃える */
+function normalizeSession(raw: any) {
+  if (!raw || typeof raw !== "object") {
+    return {
+      id: undefined,
+      next_steps: [],
+      plan: { next_steps: [] },
+      seed_questions: [],
+      persona: undefined,
+      summary: null,
+      metadata: {},
+    };
+  }
+
+  // 旧形：{ output: { next_steps, persona, ... } }
+  if ("output" in raw && raw.output) {
+    const out = raw.output ?? {};
+    const next_steps = Array.isArray(out.next_steps) ? out.next_steps : [];
+    const plan = {
+      next_steps: Array.isArray(out.next_steps) ? out.next_steps : [],
+    };
+    return {
+      id: raw.id,
+      next_steps,
+      plan,
+      seed_questions: Array.isArray(raw.seed_questions)
+        ? raw.seed_questions
+        : [],
+      persona: out.persona,
+      summary: "summary" in out ? out.summary ?? null : raw.summary ?? null,
+      metadata: raw.metadata ?? {},
+      loop: raw.loop,
+    };
+  }
+
+  // 新形：{ id, next_steps, plan?.next_steps, seed_questions, ... }
+  const next_steps = Array.isArray(raw.next_steps)
+    ? raw.next_steps
+    : Array.isArray(raw.plan?.next_steps)
+    ? raw.plan.next_steps
+    : [];
+  const plan = {
+    next_steps: Array.isArray(raw.plan?.next_steps)
+      ? raw.plan.next_steps
+      : next_steps,
+  };
+  return {
+    id: raw.id,
+    next_steps,
+    plan,
+    seed_questions: Array.isArray(raw.seed_questions) ? raw.seed_questions : [],
+    persona: raw.persona,
+    summary: "summary" in raw ? raw.summary ?? null : null,
+    metadata: raw.metadata ?? {},
+    loop: raw.loop,
   };
 }
 
@@ -131,7 +195,7 @@ export default function SessionPage() {
   const [maxQuestions, setMaxQuestions] = useState(8);
   const [minQuestions, setMinQuestions] = useState(0);
 
-  // ★ 追加：種質問の状態
+  // 種質問の状態
   const [seedLoading, setSeedLoading] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [seedQuestions, setSeedQuestions] = useState<SeedQuestion[] | null>(
@@ -143,20 +207,21 @@ export default function SessionPage() {
   const sessionFromUrl = sp.get("session");
   const { data: restored } = useLoadSession(sessionFromUrl);
 
-  // 永続化：ロード時に sessionId を復元
+  // 復元 → 正規化して保持
   useEffect(() => {
     if (!restored) return;
-    setSessionId(restored.id);
-    setSessionData(restored as any);
+    const norm = normalizeSession(restored as any);
+    setSessionId(norm.id);
+    setSessionData(norm as any);
     if ((restored as any).loop) {
       setThreshold((restored as any).loop.threshold);
       setMaxQuestions((restored as any).loop.maxQuestions);
       setMinQuestions((restored as any).loop.minQuestions ?? 0);
     }
-    localStorage.setItem(LS_KEY, restored.id);
+    localStorage.setItem(LS_KEY, norm.id);
   }, [restored]);
 
-  // セッション開始（悩み領域／会話ログは送らない）
+  // セッション開始
   const onStart = async () => {
     const fallback =
       "（自動生成ログ）Top5と基本属性から初期セッションを開始します。";
@@ -176,13 +241,16 @@ export default function SessionPage() {
         strengths_top5: selected.length ? selected : undefined,
         demographics,
       } as any);
-      setSessionId(s.id);
-      setSessionData(s as any);
-      localStorage.setItem(LS_KEY, s.id);
+
+      const norm = normalizeSession(s as any);
+
+      setSessionId(norm.id);
+      setSessionData(norm as any);
+      localStorage.setItem(LS_KEY, norm.id);
       setSp(
         (prev) => {
           const next = new URLSearchParams(prev);
-          next.set("session", s.id);
+          next.set("session", norm.id);
           return next;
         },
         { replace: true }
@@ -195,14 +263,14 @@ export default function SessionPage() {
       }
       showToast("セッションを開始しました", { type: "success" });
 
-      // ★ セッション作成後に種質問を取得
-      await fetchSeed(s.id, selected, demographics);
+      // セッション作成後に種質問を取得
+      await fetchSeed(norm.id, selected, demographics);
     } catch (e: any) {
       showToast(`開始に失敗：${String(e?.message || e)}`, { type: "error" });
     }
   };
 
-  // ★ 追加：種質問の取得
+  // 種質問取得（サーバのキー揺れに対応）
   const fetchSeed = async (
     sid: string,
     top5?: string[],
@@ -220,10 +288,33 @@ export default function SessionPage() {
           n: 5,
         }),
       });
-      const data = await res.json();
+      const body = await res.json();
       if (!res.ok)
-        throw new Error(data?.message || "種質問の取得に失敗しました");
-      setSeedQuestions(data.questions as SeedQuestion[]);
+        throw new Error(body?.message || "種質問の取得に失敗しました");
+
+      // 返却形の吸収
+      const payload =
+        body && typeof body === "object" && "data" in body ? body.data : body;
+
+      let list: SeedQuestion[] = [];
+      if (Array.isArray(payload?.seed_questions)) {
+        list = payload.seed_questions.map((text: string, idx: number) => ({
+          id: `seed-${idx + 1}`,
+          theme: "",
+          text,
+        }));
+      } else if (Array.isArray(payload?.questions)) {
+        list = payload.questions.map((q: any, idx: number) =>
+          typeof q === "string"
+            ? { id: `seed-${idx + 1}`, theme: "", text: q }
+            : {
+                id: q.id ?? `seed-${idx + 1}`,
+                theme: q.theme ?? "",
+                text: q.text ?? "",
+              }
+        );
+      }
+      setSeedQuestions(list);
     } catch (e: any) {
       setSeedError(String(e?.message || e));
       setSeedQuestions(null);
@@ -491,6 +582,12 @@ export default function SessionPage() {
     );
   };
 
+  // 以降は正規化済みのセッションを参照
+  const safeSession = normalizeSession(sessionData ?? create.data ?? null);
+  const safeNextSteps =
+    safeSession.next_steps ?? safeSession.plan?.next_steps ?? [];
+  const personaSafe = safeSession.persona;
+
   return (
     <div className="mx-auto max-w-3xl p-4 space-y-6">
       <h1 className="text-2xl font-bold">
@@ -622,7 +719,7 @@ export default function SessionPage() {
             </button>
           </div>
 
-          {/* ★ 新セクション：種質問プレビュー */}
+          {/* 種質問プレビュー */}
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">おすすめの初期質問</h2>
@@ -682,109 +779,39 @@ export default function SessionPage() {
             )}
           </section>
 
-          {/* 以降：既存の出力（要約/仮説/反証/引用/次の一歩） */}
-          {/* <section className="space-y-2">
-            <h2 className="text-xl font-semibold">要約</h2>
-            {!create.data && !sessionData ? (
-              <SkeletonBlock lines={5} />
-            ) : (
-              <pre className="whitespace-pre-wrap bg-gray-50 p-3 rounded border">
-                {(sessionData?.output ?? create.data!.output).summary}
-              </pre>
-            )}
-          </section> */}
-
-          {/* <section className="space-y-2">
-            <h2 className="text-xl font-semibold">仮説</h2>
-            {!create.data && !sessionData ? (
-              <SkeletonBlock lines={3} />
-            ) : (
-              <ul className="list-disc pl-6">
-                {(sessionData?.output ?? create.data!.output).hypotheses.map(
-                  (h, i) => (
-                    <li key={i}>{h}</li>
-                  )
-                )}
-              </ul>
-            )}
-          </section> */}
-
-          {/* {!!(sessionData?.output ?? create.data!.output).counter_questions
-            ?.length && (
-            <section className="space-y-2">
-              <h2 className="text-xl font-semibold">反証質問</h2>
-              <ul className="list-disc pl-6">
-                {(
-                  sessionData?.output ?? create.data!.output
-                ).counter_questions!.map((q, i) => (
-                  <li key={i}>{q}</li>
-                ))}
-              </ul>
-            </section>
-          )} */}
-
-          {/* <section className="space-y-2">
-            <h2 className="text-xl font-semibold">根拠引用</h2>
-            <ul className="list-disc pl-6">
-              {(sessionData?.output ?? create.data!.output).citations.map(
-                (c, i) => (
-                  <li key={i}>
-                    <a
-                      href={c.anchor}
-                      className="underline"
-                      onClick={(e) => e.preventDefault()}
-                    >
-                      {c.text}
-                    </a>{" "}
-                    <span className="text-gray-500">{c.anchor}</span>
-                  </li>
-                )
-              )}
-            </ul>
-          </section> */}
-
+          {/* 次の一歩 */}
           <section className="space-y-2">
             <h2 className="text-xl font-semibold">次の一歩</h2>
             <ul className="pl-0">
-              {(sessionData?.output ?? create.data!.output).next_steps.map(
-                (s, i) => (
-                  <li key={i} className="list-none">
-                    <button
-                      className="underline rounded px-1 py-0.5 hover:bg-gray-100"
-                      onClick={() => {
-                        navigator.clipboard?.writeText(s).then(
-                          () =>
-                            showToast("コピーしました", { type: "success" }),
-                          () =>
-                            showToast("コピーできませんでした", {
-                              type: "error",
-                            })
-                        );
-                      }}
-                      aria-label={`次の一歩をコピー：${s}`}
-                    >
-                      {s}
-                    </button>
-                  </li>
-                )
-              )}
+              {safeNextSteps.map((s: string, i: number) => (
+                <li key={i} className="list-none">
+                  <button
+                    className="underline rounded px-1 py-0.5 hover:bg-gray-100"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(s).then(
+                        () => showToast("コピーしました", { type: "success" }),
+                        () =>
+                          showToast("コピーできませんでした", { type: "error" })
+                      );
+                    }}
+                    aria-label={`次の一歩をコピー：${s}`}
+                  >
+                    {s}
+                  </button>
+                </li>
+              ))}
             </ul>
           </section>
         </div>
       )}
 
       {/* ストレングス（ベータ） */}
-      {sessionId &&
-        (sessionData || create.data) &&
-        (() => {
-          const persona = (sessionData?.output ?? create.data!.output).persona;
-          return persona ? (
-            <section className="space-y-2">
-              <h2 className="text-xl font-semibold">ストレングス（ベータ）</h2>
-              <PersonaView profile={persona} />
-            </section>
-          ) : null;
-        })()}
+      {sessionId && (sessionData || create.data) && personaSafe && (
+        <section className="space-y-2">
+          <h2 className="text-xl font-semibold">ストレングス（ベータ）</h2>
+          <PersonaView profile={personaSafe} />
+        </section>
+      )}
 
       {/* 追加指示 */}
       {sessionId && (
@@ -809,7 +836,8 @@ export default function SessionPage() {
               onClick={async () => {
                 try {
                   const s = await advance.mutateAsync(refineText);
-                  setSessionData(s as any);
+                  const norm = normalizeSession(s as any);
+                  setSessionData(norm as any);
                   setRefineText("");
                   showToast("更新しました", { type: "success" });
                 } catch {}
@@ -985,7 +1013,6 @@ export default function SessionPage() {
             "done" in loopState &&
             loopState.done === true && (
               <div className="space-y-3">
-                {/* ★ 追加：断定ヘッドライン */}
                 {(loopState as any).headline && (
                   <div className="text-lg font-semibold">
                     {(loopState as any).headline}
