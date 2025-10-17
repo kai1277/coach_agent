@@ -16,14 +16,19 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const pg = new Client({ connectionString: process.env.DATABASE_URL });
 
 function chunkText(text: string, chunkSize = 800, overlap = 120): string[] {
-  // シンプルな固定長分割（まずはこれでOK。後で句点や文単位に改善可）
+  if (!text) return [];
+  if (chunkSize <= 0) throw new Error('chunkSize must be > 0');
+
+  if (text.length <= chunkSize) return [text];
+
+  const safeOverlap = Math.max(0, Math.min(overlap, chunkSize - 1));
+  const step = Math.max(1, chunkSize - safeOverlap);
+
   const chunks: string[] = [];
-  let i = 0;
-  while (i < text.length) {
+  for (let i = 0; i < text.length; i += step) {
     const end = Math.min(text.length, i + chunkSize);
     chunks.push(text.slice(i, end));
-    i = end - overlap; // オーバーラップ
-    if (i < 0) i = 0;
+    if (end === text.length) break; 
   }
   return chunks.filter(c => c.trim().length > 0);
 }
