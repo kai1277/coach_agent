@@ -1,5 +1,6 @@
 import React from "react";
 import SessionCards from "./features/coach/components/SessionCards";
+import HealthCheck from "./components/HealthCheck";
 
 export default function App() {
   // 既に作成済みセッションIDを使う or 新規作成して紐づけてください
@@ -22,6 +23,9 @@ export default function App() {
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-4">
+      {/* 開発中だけ裏でヘルスチェック実行（UIには何も出ない） */}
+      {import.meta.env.DEV && <HealthCheck />}
+
       <div className="flex gap-2">
         <button
           className="px-3 py-1.5 rounded-lg text-sm border hover:bg-gray-50"
