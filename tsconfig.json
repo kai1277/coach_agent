@@ -11,7 +11,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "types": ["vite/client", "vitest/globals"]
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "types": ["vite/client", "vitest/globals", "node"]
   },
-  "include": ["src", "vite-env.d.ts"]
+  "include": ["src", "server", "scripts", "vite-env.d.ts"]
 }
