@@ -5,11 +5,17 @@ import { STRENGTH_THEMES, type StrengthTheme } from "../constants/strengths";
 import { SkeletonBlock } from "../../../ui/Skeleton";
 import { useToast } from "../../../ui/ToastProvider";
 import { useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useLoadSession } from "../api/useLoadSession";
 import IdentityPicker, {
   type IdentityValue,
 } from "../components/IdentityPicker";
-import type { Demographics, StrengthProfile } from "../../../types/api";
+import type {
+  Demographics,
+  StrengthProfile,
+  Answer5,
+} from "../../../types/api";
+import { api } from "../../../lib/apiClient";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -158,6 +164,8 @@ function normalizeSession(raw: any) {
 }
 
 export default function SessionPage() {
+  const navigate = useNavigate();
+
   const firstAnswerBtnRef = useRef<HTMLButtonElement | null>(null);
   const showToast = useToast();
 
@@ -235,6 +243,7 @@ export default function SessionPage() {
     const demographics = d.ageRange || d.gender || d.hometown ? d : undefined;
 
     setT0(performance.now());
+
     try {
       const s = await create.mutateAsync({
         transcript,
@@ -244,27 +253,28 @@ export default function SessionPage() {
 
       const norm = normalizeSession(s as any);
 
+      // state & localStorage 反映
       setSessionId(norm.id);
       setSessionData(norm as any);
       localStorage.setItem(LS_KEY, norm.id);
-      setSp(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set("session", norm.id);
-          return next;
-        },
-        { replace: true }
-      );
+
       if (t0 !== null) setTimeToFirst(Math.round(performance.now() - t0));
       if ((s as any).loop) {
         setThreshold((s as any).loop.threshold);
         setMaxQuestions((s as any).loop.maxQuestions);
         setMinQuestions((s as any).loop.minQuestions ?? 0);
       }
+
       showToast("セッションを開始しました", { type: "success" });
 
-      // セッション作成後に種質問を取得
-      await fetchSeed(norm.id, selected, demographics);
+      // おすすめ質問を準備（非同期でOK）
+      fetchSeed(norm.id, selected, demographics).catch(() => {});
+
+      // ★ ここで遷移（クエリ方式）
+      navigate(`/app/coach?session=${norm.id}`, { replace: true });
+
+      // もしパスパラメータ方式ならこちらに変更：
+      // navigate(`/app/coach/${norm.id}`);
     } catch (e: any) {
       showToast(`開始に失敗：${String(e?.message || e)}`, { type: "error" });
     }
@@ -274,37 +284,17 @@ export default function SessionPage() {
   const fetchSeed = async (
     sid: string,
     top5?: string[],
-    demo?: { ageRange?: string; gender?: string; hometown?: string }
+    demo?: Demographics
   ) => {
     setSeedLoading(true);
     setSeedError(null);
     try {
-      const res = await fetch(`/api/sessions/${sid}/seed-questions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          strengths_top5: top5,
-          demographics: demo,
-          n: 5,
-        }),
-      });
-      const body = await res.json();
-      if (!res.ok)
-        throw new Error(body?.message || "種質問の取得に失敗しました");
-
-      // 返却形の吸収
-      const payload =
-        body && typeof body === "object" && "data" in body ? body.data : body;
+      const payload = { strengths_top5: top5, demographics: demo, n: 5 };
+      const body = await api.sessions.seedQuestions(sid, payload);
 
       let list: SeedQuestion[] = [];
-      if (Array.isArray(payload?.seed_questions)) {
-        list = payload.seed_questions.map((text: string, idx: number) => ({
-          id: `seed-${idx + 1}`,
-          theme: "",
-          text,
-        }));
-      } else if (Array.isArray(payload?.questions)) {
-        list = payload.questions.map((q: any, idx: number) =>
+      if (Array.isArray((body as any)?.questions)) {
+        list = (body as any).questions.map((q: any, idx: number) =>
           typeof q === "string"
             ? { id: `seed-${idx + 1}`, theme: "", text: q }
             : {
@@ -312,6 +302,14 @@ export default function SessionPage() {
                 theme: q.theme ?? "",
                 text: q.text ?? "",
               }
+        );
+      } else if (Array.isArray((body as any)?.seed_questions)) {
+        list = (body as any).seed_questions.map(
+          (text: string, idx: number) => ({
+            id: `seed-${idx + 1}`,
+            theme: "",
+            text,
+          })
         );
       }
       setSeedQuestions(list);
@@ -329,11 +327,8 @@ export default function SessionPage() {
     setLoopBusy(true);
     setLoopError(null);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/questions/next`);
-      const data: LoopFetch = await res.json();
-      if (!res.ok)
-        throw new Error((data as any)?.message || "質問の取得に失敗しました");
-      setLoopState(data);
+      const data = await api.sessions.getNext(sessionId);
+      setLoopState(data as any);
       setTimeout(() => firstAnswerBtnRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
@@ -345,26 +340,18 @@ export default function SessionPage() {
   };
 
   // 回答送信
-  const answer = async (
-    qId: string,
-    a: "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO"
-  ) => {
+  const answer = async (qId: string, a: Answer5) => {
     if (!sessionId) return;
     setLoopBusy(true);
     setLoopError(null);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/answers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId: qId, answer: a }),
+      const data = await api.sessions.answer(sessionId, {
+        questionId: qId,
+        answer: a,
       });
-      const data: LoopFetch = await res.json();
-      if (!res.ok)
-        throw new Error((data as any)?.message || "回答の送信に失敗しました");
-      setLoopState(data);
-      if ("done" in data && data.done) {
+      setLoopState(data as any);
+      if ((data as any).done)
         showToast("推定が確定しました", { type: "success" });
-      }
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -380,12 +367,8 @@ export default function SessionPage() {
     setLoopBusy(true);
     setLoopError(null);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/answers/undo`, {
-        method: "POST",
-      });
-      const data: LoopFetch | any = await res.json();
-      if (!res.ok) throw new Error(data?.message || "取り消しに失敗しました");
-      setLoopState(data);
+      const data = await api.sessions.undo(sessionId);
+      setLoopState(data as any);
       showToast("直前の回答を取り消しました", { type: "info" });
     } catch (e: any) {
       const msg = String(e?.message || e);
@@ -400,13 +383,11 @@ export default function SessionPage() {
   const applySettings = async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/loop`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threshold, maxQuestions, minQuestions }),
+      const data = await api.sessions.patchLoop(sessionId, {
+        threshold,
+        maxQuestions,
+        minQuestions,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || "設定の反映に失敗しました");
       if (data.loop) {
         setThreshold(data.loop.threshold);
         setMaxQuestions(data.loop.maxQuestions);

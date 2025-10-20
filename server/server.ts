@@ -53,7 +53,7 @@ app.post('/api/sessions', async (req, res) => {
           seed_questions: []
         },
       })
-      .select('id, summary, metadata')
+      .select('id, summary, metadata, created_at')
       .single();
 
     if (error) {
@@ -61,10 +61,23 @@ app.post('/api/sessions', async (req, res) => {
       return res.status(500).json({ error: 'failed to create session' });
     }
 
-    const next_steps = data.metadata?.next_steps ?? [];
-    // ★ ラップして返す
+    const meta = (data?.metadata ?? {}) as Record<string, any>;
+    const next_steps: string[] = Array.isArray(meta.next_steps) ? meta.next_steps : [];
+
+    const output = {
+      summary: data.summary ?? '',
+      hypotheses: [],         // ひとまず空でOK（後でLLM統合時に上書き）
+      next_steps,
+      citations: [],
+      persona: null,
+    };
+    const loop = { threshold: 0.9, maxQuestions: 8, minQuestions: 0 };
+
     return res.status(201).json({
-      data: { id: data.id, summary: data.summary, next_steps }
+      id: data.id,
+      createdAt: data.created_at ?? new Date().toISOString(),
+      output,
+      loop,
     });
   } catch (e) {
     console.error(e);
@@ -79,39 +92,41 @@ app.get('/api/sessions/:id', async (req, res) => {
 
     const { data, error } = await supabase
       .from('sessions')
-      .select('id, summary, metadata')
+      .select('id, summary, metadata, created_at')
       .eq('id', id)
       .single();
 
     if (error) {
-      // 開発中フォールバック（UIが落ちないよう空で返す）
+      // 見つからない場合もフロントが落ちない形で返すなら、型を合わせる
       return res.status(200).json({
-        data: {
-          id,
-          summary: null,
+        id,
+        createdAt: new Date().toISOString(),
+        output: {
+          summary: '',
+          hypotheses: [],
           next_steps: [],
-          plan: { next_steps: [] },
-          seed_questions: [],
-          metadata: {},
-          _note: 'dev-fallback: session not found',
+          citations: [],
+          persona: null,
         },
+        loop: { threshold: 0.9, maxQuestions: 8, minQuestions: 0 },
+        _note: 'dev-fallback: session not found',
       });
     }
 
     const meta = (data?.metadata ?? {}) as Record<string, any>;
-    const next_steps = Array.isArray(meta.next_steps) ? meta.next_steps : [];
-    const seed_questions = Array.isArray(meta.seed_questions) ? meta.seed_questions : [];
+    const next_steps: string[] = Array.isArray(meta.next_steps) ? meta.next_steps : [];
 
-    // ★ ここを“ラップされた形”に
     return res.status(200).json({
-      data: {
-        id: data!.id,
-        summary: data!.summary ?? null,
+      id: data!.id,
+      createdAt: data!.created_at ?? new Date().toISOString(),
+      output: {
+        summary: data!.summary ?? '',
+        hypotheses: [],
         next_steps,
-        plan: { next_steps },
-        seed_questions,
-        metadata: meta,
+        citations: [],
+        persona: null,
       },
+      loop: { threshold: 0.9, maxQuestions: 8, minQuestions: 0 },
     });
   } catch (e) {
     console.error('GET /api/sessions/:id internal error', e);
@@ -196,13 +211,13 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
       return res.status(500).json({ error: 'failed to update session' });
     }
 
-    return res.status(200).json({
-        data: {
-            session_id: id,
-            seed_questions,
-            next_steps,
-        },
-    });
+    const questions = (seed_questions || []).map((text: string, i: number) => ({
+      id: `SQ${i + 1}`,
+      theme: (Array.isArray(newMeta.strengths_top5) && newMeta.strengths_top5[i]) || '汎用',
+      text,
+    }));
+
+    return res.status(200).json({ questions });
   } catch (e) {
     console.error('POST /api/sessions/:id/seed-questions internal error', e);
     return res.status(500).json({ error: 'internal error' });

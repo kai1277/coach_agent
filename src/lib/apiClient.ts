@@ -137,5 +137,21 @@ export const api = {
         body: JSON.stringify(body),
       });
     },
+    seedQuestions(
+      id: string,
+      payload: {
+        strengths_top5?: string[];
+        demographics?: { ageRange?: string; gender?: string; hometown?: string };
+        n?: number;
+      }
+    ) {
+      return request<{ questions?: { id?: string; theme?: string; text?: string }[]; seed_questions?: string[] }>(
+        `/api/sessions/${id}/seed-questions`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+    },
   },
 };
