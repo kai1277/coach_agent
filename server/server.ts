@@ -1,9 +1,18 @@
-// server/server.ts
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+
+type JsonError = { error: string; hint?: string };
+function sendErr(res: express.Response, status: number, error: string, hint?: string) {
+  const body: JsonError = { error, ...(hint ? { hint } : {}) };
+  return res.status(status).json(body);
+}
+
+function ensureString(v: any, name: string, min = 1) {
+  if (typeof v !== 'string' || v.trim().length < min) throw new Error(`${name} is required`);
+}
 
 /* ----------------------------- OpenAI / Supabase ---------------------------- */
 
@@ -88,7 +97,7 @@ async function callLLMJSON(params: {
   model?: string;
   temperature?: number;
   session_id?: string;
-  label?: string;   // どの用途か（seed, next, actions 等）
+  label?: string;
   timeoutMs?: number;
 }) {
   const {
@@ -126,12 +135,14 @@ async function callLLMJSON(params: {
 
 type Question = { id: string; theme: string; text: string };
 
-async function genQuestionsLLM(opts: {
-  strengths_top5?: string[];
-  demographics?: Record<string, any>;
-  n: number;
-  avoid_texts?: string[];
-}): Promise<Question[]> {
+async function genQuestionsLLM(
+  opts: {
+    strengths_top5?: string[];
+    demographics?: Record<string, any>;
+    n: number;
+    avoid_texts?: string[];
+  }
+): Promise<Question[]> {
   const { strengths_top5 = [], demographics = {}, n, avoid_texts = [] } = opts;
 
   // RAG用知識を取り込み
@@ -167,17 +178,18 @@ ${context || '(コンテキストなし)'}
   });
 
   const content = resp.choices?.[0]?.message?.content ?? '{}';
-  const parsed = extractJson(content) ?? {};
-  const arr: any[] = Array.isArray(parsed?.questions) ? parsed.questions : [];
+  const parsed: any = extractJson(content) ?? {};
+  const arr: Array<{ id?: string; theme?: string; text?: string }> =
+    Array.isArray(parsed?.questions) ? parsed.questions : [];
 
   const out: Question[] = arr
     .slice(0, n)
-    .map((q: any, i: number) => ({
+    .map((q: { id?: string; theme?: string; text?: string }, i: number): Question => ({
       id: q?.id ?? `Q${Date.now()}_${i + 1}`,
       theme: String(q?.theme ?? '').trim(),
       text: String(q?.text ?? '').trim(),
     }))
-    .filter((q: Question) => q.text);
+    .filter((q: Question) => q.text.length > 0);
 
   await recordTrace({
     model: OPENAI_MODEL,
@@ -435,6 +447,10 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 
     const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
     const meta = row.data?.metadata ?? {};
+    const prevAsked = meta?.loop?.progressAsked;
+    if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
+      st.asked = prevAsked;
+    }
 
     const t0 = Date.now();
     const qs = await genQuestionsLLM({
@@ -456,12 +472,6 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       prompt: '(questions/next)',
       completion: JSON.stringify(q),
       latency_ms: Date.now() - t0,
-    });
-
-    await supabase.from('turns').insert({
-      session_id: id,
-      role: 'user',
-      content: { type: 'answer', question_id: req.body?.questionId, answer: req.body?.answer },
     });
 
     return res.status(200).json({
@@ -490,6 +500,14 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     st.asked += 1;
 
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
+      // 保存（進捗）
+      await supabase.from('sessions').update({
+        metadata: {
+          ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
+          loop: { ...st.loop, progressAsked: st.asked },
+        }
+      }).eq('id', id);
+
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
@@ -501,9 +519,25 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       });
     }
 
+    // 進捗を永続化
+    await supabase.from('sessions').update({
+      metadata: {
+        ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
+        loop: { ...st.loop, progressAsked: st.asked },
+      }
+    }).eq('id', id);
+
+    // 回答ログを保存（turns）
+    await supabase.from('turns').insert({
+      session_id: id,
+      role: 'user',
+      content: { type: 'answer', question_id: req.body?.questionId, answer: req.body?.answer },
+    });
+
     const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
     const meta = row.data?.metadata ?? {};
 
+    const t0 = Date.now();
     const qs = await genQuestionsLLM({
       strengths_top5: meta?.strengths_top5 ?? [],
       demographics: meta?.demographics ?? {},
@@ -512,10 +546,12 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     });
     const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '直近の小さな成功はありますか？', theme: '' };
 
-    await supabase.from('turns').insert({
+    await recordTrace({
       session_id: id,
-      role: 'user',
-      content: { type: 'answer', question_id: req.body?.questionId, answer: req.body?.answer },
+      model: OPENAI_MODEL,
+      prompt: '(answers -> generate next)',
+      completion: JSON.stringify(q),
+      latency_ms: Date.now() - t0,
     });
 
     if (q?.text) {
@@ -540,6 +576,14 @@ app.post('/api/sessions/:id/answers/undo', async (req, res) => {
     const { id } = req.params;
     const st = loopOf(id);
     st.asked = Math.max(0, st.asked - 1);
+
+    // 進捗を永続化（巻き戻し）
+    await supabase.from('sessions').update({
+      metadata: {
+        ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
+        loop: { ...st.loop, progressAsked: st.asked },
+      }
+    }).eq('id', id);
 
     // 直近に追加した1件を先頭から取り除く（重複抑止バッファも巻き戻す）
     st.recentTexts.shift();
@@ -608,7 +652,6 @@ app.post('/api/hitl/reviews', async (req, res) => {
       comments,
       reviewer = 'anon',
       rubric_version = 'rubric_v1.0',
-      // score_* / labels / suggestion などは将来 column を拡張して取り込む
     } = req.body ?? {};
 
     if (!trace_id) return res.status(400).json({ error: 'trace_id is required' });
@@ -636,116 +679,100 @@ app.post('/api/hitl/reviews', async (req, res) => {
   }
 });
 
+/* --------------------------------- Actions --------------------------------- */
+
 app.post('/api/sessions/:id/actions', async (req, res) => {
+  const t0 = Date.now();
   try {
     const { id } = req.params;
     const { instruction } = req.body ?? {};
-    if (!instruction || typeof instruction !== 'string') {
-      return res.status(400).json({ message: 'instruction is required' });
-    }
+    ensureString(id, 'id');
+    ensureString(instruction, 'instruction');
 
-    // 既存セッション読み込み
-    const sel = await supabase
-      .from('sessions')
-      .select('id, summary, metadata, created_at')
-      .eq('id', id)
+    // セッション存在チェック（メタ情報取得）
+    const sess = await supabase.from('sessions').select('id, metadata, summary').eq('id', id).single();
+    if (sess.error) return sendErr(res, 404, 'session not found');
+
+    // 1) 指示を turns に保存（user）
+    const userTurn = await supabase
+      .from('turns')
+      .insert({
+        session_id: id,
+        role: 'user',
+        content: { type: 'instruction', text: String(instruction) },
+      })
+      .select('id, created_at')
       .single();
+    if (userTurn.error) return sendErr(res, 500, 'failed to insert user turn');
 
-    if (sel.error || !sel.data) {
-      return res.status(404).json({ message: 'session not found' });
-    }
-    const row = sel.data as any;
-    const meta = (row.metadata ?? {}) as Record<string, any>;
-
-    const strengths_top5 = meta.strengths_top5 ?? [];
-    const demographics   = meta.demographics ?? {};
-    const seed_questions = meta.seed_questions ?? [];
-    const prev_summary   = row.summary ?? '';
-    const prev_steps     = Array.isArray(meta.next_steps) ? meta.next_steps : [];
-
-    // RAG で少し補助（任意：instruction + 既存サマリで検索）
-    const kb = await retrieveTopK(
-      JSON.stringify({ instruction, prev_summary, strengths_top5, demographics }),
-      3
-    );
-    const context = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
-
-    // LLM へ（JSONのみを返す制約）
-    const system = `あなたは1on1コーチングの要約・提案を整えるアシスタントです。
-以下の知識や過去の要約・次の一歩、ユーザー指示を踏まえ、
-必ず JSON のみで返答してください。
-
-[CONTEXT]
-${context || '(なし)'}
-`;
-    const user = `入力:
-- strengths_top5: ${JSON.stringify(strengths_top5)}
-- demographics: ${JSON.stringify(demographics)}
-- 既存summary: ${JSON.stringify(prev_summary)}
-- 既存next_steps: ${JSON.stringify(prev_steps)}
-- 種質問サンプル: ${JSON.stringify(seed_questions)}
-- 指示: ${JSON.stringify(instruction)}
-
-出力スキーマ:
+    // 2) LLM 呼び出し（STAR要約＋次の一歩）
+    const system = `あなたは1on1の要約・次の一歩設計アシスタントです。
+- 出力は必ず JSON のみ。
+- スキーマ:
 {
-  "summary": "<日本語の要約。先頭に【更新】などは不要。150字以内>",
-  "next_steps": ["<短い実行ステップ>", "..."]  // 1〜5件
+  "summary": "<2〜4文の日本語要約>",
+  "next_steps": ["<短いTODO>", "..."]
 }`;
-    const json = await callLLMJSON({
+    const user = `前提メモ: ${sess.data.summary ?? '(なし)'}
+メタ情報: ${JSON.stringify(sess.data.metadata ?? {})}
+指示: ${instruction}
+制約:
+- next_steps は 3 件までで短く具体的に
+- JSON 以外の文字は出力しない`;
+
+    const resp = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      temperature: 0.3,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
-      session_id: id,
-      label: 'actions',
-      temperature: 0.3,
-      timeoutMs: 25_000,
     });
 
-    const newSummary = String(json?.summary ?? prev_summary ?? '').slice(0, 500);
-    const newStepsRaw = Array.isArray(json?.next_steps) ? json.next_steps : [];
-    const newSteps = newStepsRaw
-      .map((s: any) => String(s || '').trim())
-      .filter((s: string) => s)
-      .slice(0, 5);
+    const content = resp.choices?.[0]?.message?.content ?? '{}';
+    const parsed = extractJson(content) ?? {};
+    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    const next_steps: string[] = Array.isArray(parsed.next_steps) ? parsed.next_steps.filter((s: any) => typeof s === 'string' && s.trim()) : [];
 
-    // 保存（summary/next_steps）
-    const newMeta = {
-      ...meta,
-      next_steps: newSteps.length ? newSteps : prev_steps,
-    };
-    const upd = await supabase
-      .from('sessions')
-      .update({ summary: newSummary, metadata: newMeta })
-      .eq('id', id)
-      .select('id, summary, metadata, created_at')
+    // 3) 保存：assistant turn
+    const asstTurn = await supabase
+      .from('turns')
+      .insert({
+        session_id: id,
+        role: 'assistant',
+        content: { summary, next_steps, citations: [] },
+      })
+      .select('id')
       .single();
+    if (asstTurn.error) return sendErr(res, 500, 'failed to insert assistant turn');
 
-    if (upd.error || !upd.data) {
-      return res.status(500).json({ message: 'failed to update session' });
-    }
+    // 4) セッションのサマリ/次の一歩を metadata に反映（任意）
+    const prevMeta = (sess.data.metadata ?? {}) as any;
+    const mergedMeta = { ...prevMeta, next_steps };
+    await supabase.from('sessions').update({ metadata: mergedMeta }).eq('id', id);
 
-    // フロント互換の形で返す（GET と同等のフォーマット）
-    const meta2 = (upd.data.metadata ?? {}) as Record<string, any>;
-    const next_steps = Array.isArray(meta2.next_steps) ? meta2.next_steps : [];
+    // 5) トレース
+    await recordTrace({
+      session_id: id,
+      turn_id: asstTurn.data?.id,
+      model: OPENAI_MODEL,
+      prompt: JSON.stringify({ system, user }),
+      completion: JSON.stringify({ summary, next_steps }),
+      latency_ms: Date.now() - t0,
+    });
+
+    // 6) フロント互換レスポンス
     return res.status(200).json({
-      id: upd.data.id,
-      createdAt: upd.data.created_at ?? new Date().toISOString(),
-      output: {
-        summary: upd.data.summary ?? '',
-        hypotheses: [],
-        next_steps,
-        citations: [],
-        persona: null,
-      },
+      id,
+      createdAt: new Date().toISOString(),
+      output: { summary, hypotheses: [], next_steps, citations: [], persona: null },
       loop: { threshold: 0.9, maxQuestions: 8, minQuestions: 0 },
     });
-  } catch (e) {
-    console.error('POST /api/sessions/:id/actions error', e);
-    return res.status(500).json({ message: 'internal error' });
+  } catch (e: any) {
+    console.error('POST /actions error', e);
+    return sendErr(res, 500, 'internal error', '指示文の形式やOpenAIキーを確認してください');
   }
 });
-
 
 /* --------------------------------- Listen ---------------------------------- */
 

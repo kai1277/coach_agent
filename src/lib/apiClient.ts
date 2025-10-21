@@ -12,15 +12,13 @@ const API_BASE =
   API_MODE === "real" ? (import.meta as any).env?.VITE_API_BASE_URL ?? "" : "";
 
 /**
- * ✅ named export: apiClient
- * - 生の fetch(Response) を返す薄いラッパー
- * - 呼び出し側で res.ok チェック → res.json() する使い方に対応
+ * 生の fetch を返す薄いラッパー
  */
 export async function apiClient(
   input: RequestInfo | URL,
   init: RequestInit = {}
 ): Promise<Response> {
-  // 文字列/URL のときは API_BASE を前置（ただし絶対URLならそのまま）
+  // 相対パスなら API_BASE を前置
   let url: string | URL = input as any;
   if (typeof input === "string") {
     const isAbsolute = /^https?:\/\//i.test(input);
@@ -29,20 +27,18 @@ export async function apiClient(
     url = input;
   }
 
-  // Content-Type の補完（body があり、かつ FormData/Blob でない場合のみ）
   const headers = new Headers(init.headers);
   const hasBody = init.body != null;
   const isMultipart =
     typeof FormData !== "undefined" && init.body instanceof FormData;
-  const isBlob =
-    typeof Blob !== "undefined" && init.body instanceof Blob;
+  const isBlob = typeof Blob !== "undefined" && init.body instanceof Blob;
 
   if (!headers.has("Content-Type") && hasBody && !isMultipart && !isBlob) {
     headers.set("Content-Type", "application/json");
   }
 
   return fetch(url as any, {
-    // 認証Cookie等を使うなら有効化（必要なければ削除可）
+    // 認証が必要ならコメントアウトを外す
     // credentials: "include",
     ...init,
     headers,
@@ -50,22 +46,19 @@ export async function apiClient(
 }
 
 /**
- * 高級API: JSON パース & エラー整形 & {data:...} アンラップ
- * - 下層では apiClient を利用
+ * JSON パース & エラー整形 & {data:...} アンラップ
  */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiClient(path, init);
 
   let json: any = null;
   try {
-    // レスポンスが空のケースもあり得る
     json = await res.json();
   } catch {
     json = null;
   }
 
   if (!res.ok) {
-    // よくある形 { error: '...', message: '...' } のどちらにも対応
     const msg =
       (json &&
         typeof json === "object" &&
@@ -75,9 +68,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       "Request failed";
     throw new Error(msg);
   }
-  // console.debug('[request]', path, res.status, json);
 
-  // { data: {...} } にも素の {...} にも対応
   const unwrapped =
     json && typeof json === "object" && "data" in json ? (json as any).data : json;
 
@@ -85,9 +76,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * 便利メソッド群（そのまま維持）
- * - /features 側で使っている場合も互換
- * - /actions はサーバの仕様に合わせてキー名を instruction に統一
+ * 高級API: /api/sessions 系
  */
 export const api = {
   sessions: {
@@ -105,7 +94,15 @@ export const api = {
     get(id: string) {
       return request<Session>(`/api/sessions/${id}`);
     },
+    // /actions は instruction キーで統一
     action(id: string, instruction: string) {
+      return request<Session>(`/api/sessions/${id}/actions`, {
+        method: "POST",
+        body: JSON.stringify({ instruction }),
+      });
+    },
+    actions(id: string, instruction: string) {
+      // 互換のためのエイリアス（内部は action と同じ）
       return request<Session>(`/api/sessions/${id}/actions`, {
         method: "POST",
         body: JSON.stringify({ instruction }),
