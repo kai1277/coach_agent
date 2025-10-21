@@ -139,18 +139,11 @@ export const api = {
     },
     seedQuestions(
       id: string,
-      payload: {
-        strengths_top5?: string[];
-        demographics?: { ageRange?: string; gender?: string; hometown?: string };
-        n?: number;
-      }
+      body: { strengths_top5?: string[]; demographics?: any; n?: number }
     ) {
-      return request<{ questions?: { id?: string; theme?: string; text?: string }[]; seed_questions?: string[] }>(
+      return request<{ questions?: any[]; seed_questions?: string[] }>(
         `/api/sessions/${id}/seed-questions`,
-        {
-          method: "POST",
-          body: JSON.stringify(payload),
-        }
+        { method: "POST", body: JSON.stringify(body) }
       );
     },
   },

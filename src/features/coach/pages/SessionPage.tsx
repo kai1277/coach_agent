@@ -16,6 +16,7 @@ import type {
   Answer5,
 } from "../../../types/api";
 import { api } from "../../../lib/apiClient";
+import { apiClient } from "../../../lib/apiClient";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
