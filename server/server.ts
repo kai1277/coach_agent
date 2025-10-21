@@ -1,3 +1,4 @@
+// server/server.ts
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -25,7 +26,7 @@ const OPENAI_EMBED_MODEL = process.env.OPENAI_EMBED_MODEL ?? 'text-embedding-3-s
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!, // サービスロール鍵があればそちらを推奨
+  process.env.SUPABASE_ANON_KEY!, // サービスロール鍵があればより推奨
   {
     global: { fetch: globalThis.fetch },
     auth: { persistSession: false, autoRefreshToken: false },
@@ -121,7 +122,6 @@ async function upsertKnowledgeDoc(params: {
   // 2) 各 chunk を embedding して保存
   for (let i = 0; i < chunks.length; i++) {
     const c = chunks[i];
-    // 空はスキップ
     const content = (c.content ?? '').trim();
     if (!content) continue;
 
@@ -147,49 +147,7 @@ async function upsertKnowledgeDoc(params: {
   return { doc_id };
 }
 
-
 /* --------------------------- LLM Question Generator ------------------------- */
-
-async function callLLMJSON(params: {
-  messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
-  model?: string;
-  temperature?: number;
-  session_id?: string;
-  label?: string;
-  timeoutMs?: number;
-}) {
-  const {
-    messages,
-    model = OPENAI_MODEL,
-    temperature = 0.2,
-    session_id,
-    label = 'actions',
-    timeoutMs = 20_000,
-  } = params;
-
-  const t0 = Date.now();
-  const ac = new AbortController();
-  const tm = setTimeout(() => ac.abort('timeout'), timeoutMs);
-
-  try {
-    const resp = await openai.chat.completions.create(
-      { model, temperature, messages },
-      { signal: ac.signal as any }
-    );
-    const content = resp.choices?.[0]?.message?.content ?? '{}';
-    const json = extractJson(content) ?? {};
-    await recordTrace({
-      session_id,
-      model,
-      prompt: JSON.stringify(messages),
-      completion: content,
-      latency_ms: Date.now() - t0,
-    });
-    return json;
-  } finally {
-    clearTimeout(tm);
-  }
-}
 
 type Question = { id: string; theme: string; text: string };
 
@@ -377,7 +335,6 @@ app.get('/api/sessions/:id', async (req, res) => {
       .single();
 
     if (error || !data) {
-      // 見つからない場合も型を合わせて返す（UIを壊さない）
       return res.status(200).json({
         id,
         createdAt: new Date().toISOString(),
@@ -410,6 +367,28 @@ app.get('/api/sessions/:id', async (req, res) => {
     });
   } catch (e) {
     console.error('GET /api/sessions/:id internal error', e);
+    return res.status(500).json({ error: 'internal error' });
+  }
+});
+
+/* ---------------------- Turns (回答ログ) 取得 API [P0] ---------------------- */
+
+app.get('/api/sessions/:id/turns', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('turns')
+      .select('id, created_at, role, content')
+      .eq('session_id', id)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('GET /turns error', error);
+      return res.status(500).json({ error: 'failed to fetch turns' });
+    }
+    return res.status(200).json({ turns: data ?? [] });
+  } catch (e) {
+    console.error('GET /turns internal error', e);
     return res.status(500).json({ error: 'internal error' });
   }
 });
@@ -465,7 +444,7 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
     const newTexts = questions.map((q) => q.text).filter(Boolean);
     st.recentTexts = Array.from(new Set([...newTexts, ...st.recentTexts])).slice(0, 10);
 
-    // メタに保存（監査/再生成のため）
+    // メタに保存
     const newMeta = {
       ...(row.metadata ?? {}),
       strengths_top5: strengths_top5 ?? row.metadata?.strengths_top5,
@@ -477,7 +456,6 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
     return res.status(200).json({ questions });
   } catch (e) {
     console.error('POST /seed-questions error', e);
-    // 最小フォールバック
     return res.status(200).json({
       questions: [{ id: `QF_${Date.now()}`, theme: '', text: '直近日常で嬉しかったことはありますか？' }],
     });
@@ -519,7 +497,6 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     });
     const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
 
-    // 最近の文面に追加（重複抑止）
     if (q?.text) {
       st.recentTexts = Array.from(new Set([q.text, ...st.recentTexts])).slice(0, 10);
     }
@@ -557,15 +534,15 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     const st = loopOf(id);
     st.asked += 1;
 
-    if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
-      // 保存（進捗）
-      await supabase.from('sessions').update({
-        metadata: {
-          ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
-          loop: { ...st.loop, progressAsked: st.asked },
-        }
-      }).eq('id', id);
+    // 進捗を永続化
+    await supabase.from('sessions').update({
+      metadata: {
+        ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
+        loop: { ...st.loop, progressAsked: st.asked },
+      }
+    }).eq('id', id);
 
+    if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
@@ -576,14 +553,6 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
         evidence: [],
       });
     }
-
-    // 進捗を永続化
-    await supabase.from('sessions').update({
-      metadata: {
-        ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
-        loop: { ...st.loop, progressAsked: st.asked },
-      }
-    }).eq('id', id);
 
     // 回答ログを保存（turns）
     await supabase.from('turns').insert({
@@ -804,10 +773,13 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
       .single();
     if (asstTurn.error) return sendErr(res, 500, 'failed to insert assistant turn');
 
-    // 4) セッションのサマリ/次の一歩を metadata に反映（任意）
+    // 4) セッションに summary を永続化 + 次の一歩を metadata に反映（P0）
     const prevMeta = (sess.data.metadata ?? {}) as any;
     const mergedMeta = { ...prevMeta, next_steps };
-    await supabase.from('sessions').update({ metadata: mergedMeta }).eq('id', id);
+    await supabase
+      .from('sessions')
+      .update({ summary, metadata: mergedMeta })
+      .eq('id', id);
 
     // 5) トレース
     await recordTrace({
@@ -858,7 +830,6 @@ app.post('/api/knowledge/import', async (req, res) => {
     return res.status(500).json({ error: 'internal error' });
   }
 });
-
 
 /* --------------------------------- Listen ---------------------------------- */
 
