@@ -2,6 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!, // .env に設定
+});
+const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -13,6 +19,71 @@ const supabase = createClient(
     auth: { persistSession: false, autoRefreshToken: false },
   }
 );
+
+async function genQuestionsLLM(opts: {
+  strengths_top5?: string[];
+  demographics?: Record<string, any>;
+  n: number;
+}) {
+  const { strengths_top5 = [], demographics = {}, n } = opts;
+
+  const system = `あなたは1on1のための質問設計エージェントです。
+入力の strengths_top5, demographics, n に基づき、
+{ "questions": [ { "theme": "<資質名>", "text": "<日本語の質問文>" }, ... ] }
+というJSONを厳密に返してください。余計な前置きや説明文は書かないでください。
+制約:
+- 配列長は n 件
+- text は具体的で、5〜40文字程度
+- theme は strengths_top5 から選ぶ（不足する場合は関連の強い資質名を推定）
+- 質問は YES/NO を想定した短い文（例:「歴史の本が好きですか？」）`;
+
+  const user = `ストレングス: ${JSON.stringify(strengths_top5, null, 0)}
+属性: ${JSON.stringify(demographics, null, 0)}
+個数: ${n}
+出力は必ずJSONのみ`;
+
+  const resp = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    temperature: 0.4,
+    response_format: { type: 'json_object' as const },
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  });
+
+  const content = resp.choices?.[0]?.message?.content ?? '{}';
+  let parsed: any;
+  try { parsed = JSON.parse(content); } catch { parsed = {}; }
+  const arr = Array.isArray(parsed?.questions) ? parsed.questions : [];
+
+  // 正規化（id 補完）
+  return arr
+    .slice(0, n)
+    .map((q: any, i: number) => ({
+      id: q?.id ?? `Q${Date.now()}_${i + 1}`,
+      theme: String(q?.theme ?? '').trim(),
+      text: String(q?.text ?? '').trim(),
+    }))
+    .filter((q: any) => q.text);
+}
+
+type LoopState = { asked: number; loop: { threshold: number; maxQuestions: number; minQuestions: number } };
+const LOOP: Record<string, LoopState> = {};
+function loopOf(id: string): LoopState {
+  return (LOOP[id] ??= { asked: 0, loop: { threshold: 0.9, maxQuestions: 8, minQuestions: 0 } });
+}
+// ニュートラル posterior（UI破綻回避用）
+function neutralPosterior() {
+  return {
+    TYPE_STRATEGY: 0.2,
+    TYPE_EMPATHY: 0.2,
+    TYPE_EXECUTION: 0.2,
+    TYPE_ANALYTICAL: 0.2,
+    TYPE_STABILITY: 0.2,
+  };
+}
+
 
 const app = express();
 const ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
@@ -85,7 +156,6 @@ app.post('/api/sessions', async (req, res) => {
   }
 });
 
-
 app.get('/api/sessions/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -134,93 +204,197 @@ app.get('/api/sessions/:id', async (req, res) => {
   }
 });
 
-
-
 app.post('/api/sessions/:id/seed-questions', async (req, res) => {
   try {
     const { id } = req.params;
     const { strengths_top5, demographics, n } = req.body ?? {};
-    const size = Number(n) || 3;
+    const size = Number(n) || 5;
 
-    // 既存metadataを取得
-    const sel = await supabase
-      .from('sessions')
-      .select('id, metadata')
-      .eq('id', id)
-      .single();
-
-    let row = sel.data; // ← ローカル変数に逃がす
-
-    if (sel.error || !row) {
-      // 無ければ作成
-      const ins = await supabase
-        .from('sessions')
-        .insert({
-          id,
-          title: '(auto-created)',
-          summary: null,
-          metadata: {},
-        })
+    // セッション row を用意（無ければ作成）
+    let row = (
+      await supabase.from('sessions').select('id, metadata').eq('id', id).single()
+    ).data;
+    if (!row) {
+      const ins = await supabase.from('sessions')
+        .insert({ id, title: '(auto-created)', metadata: {} })
         .select('id, metadata')
         .single();
-
       if (ins.error || !ins.data) {
-        console.error('auto-insert error', ins.error);
         return res.status(500).json({ error: 'failed to create session' });
       }
-      row = ins.data; // ← row に代入（sel.data へは代入しない）
+      row = ins.data;
     }
 
-    const meta = (row.metadata ?? {}) as Record<string, any>;
+    // LLM で質問生成（ハードコード配列を廃止）
+    const questions = await genQuestionsLLM({
+      strengths_top5: strengths_top5 ?? row.metadata?.strengths_top5 ?? [],
+      demographics: demographics ?? row.metadata?.demographics ?? {},
+      n: size,
+    });
 
-    const seed_questions: string[] = [
-      '直近で「うまくいった」出来事は？',
-      'それを支えた強みは何？',
-      '次の1週間で小さく試せることは？',
-      '想定リスクと対策は？',
-      '成功のサインは何？',
-    ].slice(0, size);
-
-    const next_steps: Array<{ title: string; due: string | null }> = [
-      { title: '小さな実験を1つ決める', due: null },
-      { title: '実験の記録テンプレを用意', due: null },
-    ];
-
+    // 保存（必要に応じて）
     const newMeta = {
-      ...meta,
-      strengths_top5: strengths_top5 ?? meta.strengths_top5,
-      demographics: demographics ?? meta.demographics,
-      seed_questions,
-      next_steps,
+      ...(row.metadata ?? {}),
+      strengths_top5: strengths_top5 ?? row.metadata?.strengths_top5,
+      demographics: demographics ?? row.metadata?.demographics,
+      seed_questions: questions, // 形式そのまま保存
     };
-
-    const upd = await supabase
-      .from('sessions')
-      .update({ metadata: newMeta })
-      .eq('id', id)
-      .select('id')
-      .single();
-
-    if (upd.error) {
-      console.error('supabase update error', {
-        message: (upd.error as any).message,
-        details: (upd.error as any).details,
-        hint: (upd.error as any).hint,
-        code: (upd.error as any).code,
-      });
-      return res.status(500).json({ error: 'failed to update session' });
-    }
-
-    const questions = (seed_questions || []).map((text: string, i: number) => ({
-      id: `SQ${i + 1}`,
-      theme: (Array.isArray(newMeta.strengths_top5) && newMeta.strengths_top5[i]) || '汎用',
-      text,
-    }));
+    await supabase.from('sessions').update({ metadata: newMeta }).eq('id', id);
 
     return res.status(200).json({ questions });
   } catch (e) {
-    console.error('POST /api/sessions/:id/seed-questions internal error', e);
-    return res.status(500).json({ error: 'internal error' });
+    console.error('POST /seed-questions error', e);
+    // 最小フォールバック（LLM失敗時）
+    return res.status(200).json({
+      questions: [
+        { id: `QF_${Date.now()}`, theme: '', text: '直近日常で嬉しかったことはありますか？' },
+      ],
+    });
+  }
+});
+
+app.get('/api/sessions/:id/questions/next', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const st = loopOf(id);
+
+    // max に到達していれば done
+    if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
+      return res.status(200).json({
+        done: true,
+        top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 }, // ダミー（UI互換用）
+        next_steps: [],
+        asked: st.asked,
+        max: st.loop.maxQuestions,
+        posterior: neutralPosterior(),
+        evidence: [],
+      });
+    }
+
+    // セッション情報（Top5/デモグラ）を読み込み
+    const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
+    const meta = row.data?.metadata ?? {};
+
+    // LLM で1問生成（n=1）
+    const qs = await genQuestionsLLM({
+      strengths_top5: meta?.strengths_top5 ?? [],
+      demographics: meta?.demographics ?? {},
+      n: 1,
+    });
+    const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
+
+    return res.status(200).json({
+      done: false,
+      question: { id: q.id, text: q.text },
+      progress: { asked: st.asked, max: st.loop.maxQuestions },
+      hint: { topLabel: '', confidence: 0 }, // ベイズ無しなので空
+      posterior: neutralPosterior(),
+    });
+  } catch (e) {
+    console.error('GET /questions/next error', e);
+    // フォールバック：最低限の形
+    return res.status(200).json({
+      done: false,
+      question: { id: `QF_${Date.now()}`, text: '直近で嬉しかったことはありますか？' },
+      progress: { asked: 0, max: 1 },
+      hint: { topLabel: '', confidence: 0 },
+      posterior: neutralPosterior(),
+    });
+  }
+});
+
+app.post('/api/sessions/:id/answers', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const st = loopOf(id);
+    st.asked += 1;
+
+    if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
+      return res.status(200).json({
+        done: true,
+        top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 }, // UI互換用
+        next_steps: [],
+        asked: st.asked,
+        max: st.loop.maxQuestions,
+        posterior: neutralPosterior(),
+        evidence: [],
+      });
+    }
+
+    // 続ける場合は次問を生成
+    const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
+    const meta = row.data?.metadata ?? {};
+    const qs = await genQuestionsLLM({
+      strengths_top5: meta?.strengths_top5 ?? [],
+      demographics: meta?.demographics ?? {},
+      n: 1,
+    });
+    const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '直近の小さな成功はありますか？', theme: '' };
+
+    return res.status(200).json({
+      done: false,
+      question: { id: q.id, text: q.text },
+      progress: { asked: st.asked, max: st.loop.maxQuestions },
+      hint: { topLabel: '', confidence: 0 },
+      posterior: neutralPosterior(),
+    });
+  } catch (e) {
+    console.error('POST /answers error', e);
+    return res.status(500).json({ message: 'internal error' });
+  }
+});
+
+app.post('/api/sessions/:id/answers/undo', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const st = loopOf(id);
+    st.asked = Math.max(0, st.asked - 1);
+
+    // 直後に次問（= 現在位置の問）を提示
+    const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
+    const meta = row.data?.metadata ?? {};
+    const qs = await genQuestionsLLM({
+      strengths_top5: meta?.strengths_top5 ?? [],
+      demographics: meta?.demographics ?? {},
+      n: 1,
+    });
+    const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '最近の仕事で楽しかったことは？', theme: '' };
+
+    return res.status(200).json({
+      done: false,
+      question: { id: q.id, text: q.text },
+      progress: { asked: st.asked, max: st.loop.maxQuestions },
+      hint: { topLabel: '', confidence: 0 },
+      posterior: neutralPosterior(),
+    });
+  } catch (e) {
+    console.error('POST /answers/undo error', e);
+    return res.status(500).json({ message: 'internal error' });
+  }
+});
+
+app.patch('/api/sessions/:id/loop', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { threshold, maxQuestions, minQuestions } = req.body ?? {};
+    const st = loopOf(id);
+    st.loop = {
+      threshold: typeof threshold === 'number' ? Math.min(Math.max(threshold, 0.5), 0.99) : st.loop.threshold,
+      maxQuestions: typeof maxQuestions === 'number' ? Math.min(Math.max(maxQuestions, 3), 12) : st.loop.maxQuestions,
+      minQuestions: typeof minQuestions === 'number' ? Math.min(Math.max(minQuestions, 0), 10) : st.loop.minQuestions,
+    };
+    // （任意）sessions.metadata.loop にも保存しておくと復元が楽
+    await supabase.from('sessions').update({
+      metadata: {
+        ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
+        loop: st.loop,
+      }
+    }).eq('id', id);
+
+    return res.status(200).json({ ok: true, loop: st.loop });
+  } catch (e) {
+    console.error('PATCH /loop error', e);
+    return res.status(500).json({ message: 'internal error' });
   }
 });
 
