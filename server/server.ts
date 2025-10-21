@@ -90,6 +90,64 @@ async function retrieveTopK(query: string, k = 3): Promise<Array<{ content: stri
   }
 }
 
+// ===== RAG: docs & chunks upsert helper =====
+async function upsertKnowledgeDoc(params: {
+  source?: string;
+  title?: string;
+  url?: string | null;
+  metadata?: Record<string, any>;
+  chunks: Array<{ content: string; metadata?: Record<string, any> }>;
+}) {
+  const {
+    source = 'manual',
+    title = '',
+    url = null,
+    metadata = {},
+    chunks = [],
+  } = params;
+
+  // 1) doc を作成
+  const docIns = await supabase
+    .from('knowledge_docs')
+    .insert({ source, title, url, metadata })
+    .select('id')
+    .single();
+
+  if (docIns.error || !docIns.data) {
+    throw new Error(`[upsertKnowledgeDoc] insert doc failed: ${docIns.error?.message}`);
+  }
+  const doc_id = docIns.data.id as string;
+
+  // 2) 各 chunk を embedding して保存
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    // 空はスキップ
+    const content = (c.content ?? '').trim();
+    if (!content) continue;
+
+    const emb = await openai.embeddings.create({
+      model: OPENAI_EMBED_MODEL,
+      input: content,
+    });
+    const vector = emb.data[0].embedding as unknown as number[];
+
+    const ins = await supabase.from('knowledge_chunks').insert({
+      doc_id,
+      chunk_index: i,
+      content,
+      embedding: vector as any,
+      metadata: c.metadata ?? {},
+    }).select('id').single();
+
+    if (ins.error) {
+      console.warn('[upsertKnowledgeDoc] insert chunk error:', ins.error.message);
+    }
+  }
+
+  return { doc_id };
+}
+
+
 /* --------------------------- LLM Question Generator ------------------------- */
 
 async function callLLMJSON(params: {
@@ -773,6 +831,34 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
     return sendErr(res, 500, 'internal error', '指示文の形式やOpenAIキーを確認してください');
   }
 });
+
+// --------------------------- RAG: Knowledge Import ---------------------------
+app.post('/api/knowledge/import', async (req, res) => {
+  try {
+    const { title, url, source, metadata, chunks } = req.body ?? {};
+
+    if (!Array.isArray(chunks) || chunks.length === 0) {
+      return res.status(400).json({ error: 'chunks is required (non-empty array)' });
+    }
+
+    const result = await upsertKnowledgeDoc({
+      source: source ?? 'manual',
+      title: String(title ?? ''),
+      url: typeof url === 'string' ? url : null,
+      metadata: (metadata && typeof metadata === 'object') ? metadata : {},
+      chunks: chunks.map((c: any) => ({
+        content: String(c?.content ?? ''),
+        metadata: (c?.metadata && typeof c.metadata === 'object') ? c.metadata : {},
+      })),
+    });
+
+    return res.status(201).json({ ok: true, doc_id: result.doc_id, chunks: chunks.length });
+  } catch (e: any) {
+    console.error('POST /api/knowledge/import error', e);
+    return res.status(500).json({ error: 'internal error' });
+  }
+});
+
 
 /* --------------------------------- Listen ---------------------------------- */
 
