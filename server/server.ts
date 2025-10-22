@@ -26,12 +26,13 @@ const OPENAI_EMBED_MODEL = process.env.OPENAI_EMBED_MODEL ?? 'text-embedding-3-s
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!, // サービスロール鍵があればより推奨
+  (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY)!,
   {
     global: { fetch: globalThis.fetch },
     auth: { persistSession: false, autoRefreshToken: false },
   }
 );
+
 
 /* --------------------------------- Helpers --------------------------------- */
 
@@ -145,6 +146,32 @@ async function upsertKnowledgeDoc(params: {
   }
 
   return { doc_id };
+}
+
+/** 直近の「回答」turn（user/answer）を1件取得 */
+async function fetchLastAnswerTurn(session_id: string) {
+  const { data, error } = await supabase
+    .from('turns')
+    .select('id, content, created_at')
+    .eq('session_id', session_id)
+    .eq('role', 'user')
+    .filter('content->>type', 'eq', 'answer')   // ← ここがポイント
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error || !data || data.length === 0) return null;
+  return data[0];
+}
+
+
+/** JSONB content に undo=true を立てて更新（論理Undo） */
+async function markTurnUndo(turn_id: string, content: any) {
+  const newContent = { ...(content ?? {}), undo: true };
+  const { error } = await supabase
+    .from('turns')
+    .update({ content: newContent })
+    .eq('id', turn_id);
+  if (error) console.warn('[markTurnUndo] update failed', error.message);
 }
 
 /* --------------------------- LLM Question Generator ------------------------- */
@@ -376,19 +403,28 @@ app.get('/api/sessions/:id', async (req, res) => {
 app.get('/api/sessions/:id/turns', async (req, res) => {
   try {
     const { id } = req.params;
-    const { data, error } = await supabase
-      .from('turns')
-      .select('id, created_at, role, content')
-      .eq('session_id', id)
-      .order('created_at', { ascending: true });
 
+    // パラメータ（任意）
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 200), 1), 1000); // 1..1000
+    const order = (String(req.query.order ?? 'asc').toLowerCase() === 'desc') ? 'desc' : 'asc';
+
+    // 取得
+    const q = supabase
+      .from('turns')
+      .select('id, session_id, role, content, created_at')
+      .eq('session_id', id)
+      .order('created_at', { ascending: order === 'asc' })
+      .limit(limit);
+
+    const { data, error } = await q;
     if (error) {
-      console.error('GET /turns error', error);
+      console.error('[GET /turns] supabase error', error);
       return res.status(500).json({ error: 'failed to fetch turns' });
     }
+
     return res.status(200).json({ turns: data ?? [] });
   } catch (e) {
-    console.error('GET /turns internal error', e);
+    console.error('GET /api/sessions/:id/turns error', e);
     return res.status(500).json({ error: 'internal error' });
   }
 });
@@ -602,9 +638,9 @@ app.post('/api/sessions/:id/answers/undo', async (req, res) => {
   try {
     const { id } = req.params;
     const st = loopOf(id);
-    st.asked = Math.max(0, st.asked - 1);
 
-    // 進捗を永続化（巻き戻し）
+    // 進捗巻き戻し（永続化）
+    st.asked = Math.max(0, st.asked - 1);
     await supabase.from('sessions').update({
       metadata: {
         ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
@@ -612,12 +648,25 @@ app.post('/api/sessions/:id/answers/undo', async (req, res) => {
       }
     }).eq('id', id);
 
-    // 直近に追加した1件を先頭から取り除く（重複抑止バッファも巻き戻す）
+    // 直近回答の物理削除
+    const last = await fetchLastAnswerTurn(id);
+    let deleteInfo: {deleted?: string; error?: string} = {};
+    if (last?.id) {
+      const { error: delErr } = await supabase.from('turns').delete().eq('id', last.id);
+      if (delErr) {
+        console.warn('[undo] delete last answer failed:', delErr.message);
+        deleteInfo.error = delErr.message;
+      } else {
+        deleteInfo.deleted = last.id;
+      }
+    }
+
+    // 重複抑止バッファ巻き戻し
     st.recentTexts.shift();
 
+    // 次の質問（現在位置）
     const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
     const meta = row.data?.metadata ?? {};
-
     const qs = await genQuestionsLLM({
       strengths_top5: meta?.strengths_top5 ?? [],
       demographics: meta?.demographics ?? {},
@@ -625,7 +674,6 @@ app.post('/api/sessions/:id/answers/undo', async (req, res) => {
       avoid_texts: st.recentTexts,
     });
     const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '最近の仕事で楽しかったことは？', theme: '' };
-
     if (q?.text) {
       st.recentTexts = Array.from(new Set([q.text, ...st.recentTexts])).slice(0, 10);
     }
@@ -636,6 +684,7 @@ app.post('/api/sessions/:id/answers/undo', async (req, res) => {
       progress: { asked: st.asked, max: st.loop.maxQuestions },
       hint: { topLabel: '', confidence: 0 },
       posterior: neutralPosterior(),
+      debug: deleteInfo,  // ★ 削除の可否を可視化
     });
   } catch (e) {
     console.error('POST /answers/undo error', e);
@@ -716,9 +765,13 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
     ensureString(id, 'id');
     ensureString(instruction, 'instruction');
 
-    // セッション存在チェック（メタ情報取得）
-    const sess = await supabase.from('sessions').select('id, metadata, summary').eq('id', id).single();
-    if (sess.error) return sendErr(res, 404, 'session not found');
+    // セッション存在チェック
+    const sess = await supabase
+      .from('sessions')
+      .select('id, metadata, summary')
+      .eq('id', id)
+      .single();
+    if (sess.error || !sess.data) return sendErr(res, 404, 'session not found');
 
     // 1) 指示を turns に保存（user）
     const userTurn = await supabase
@@ -756,10 +809,18 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
       ],
     });
 
+    // 生成結果のパースと正規化
     const content = resp.choices?.[0]?.message?.content ?? '{}';
     const parsed = extractJson(content) ?? {};
-    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-    const next_steps: string[] = Array.isArray(parsed.next_steps) ? parsed.next_steps.filter((s: any) => typeof s === 'string' && s.trim()) : [];
+    const summary =
+      typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    const next_steps: string[] = (Array.isArray(parsed.next_steps)
+      ? parsed.next_steps
+      : []
+    )
+      .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
+      .filter((s: string) => !!s)
+      .slice(0, 3); // 最大3件に制限
 
     // 3) 保存：assistant turn
     const asstTurn = await supabase
@@ -773,13 +834,17 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
       .single();
     if (asstTurn.error) return sendErr(res, 500, 'failed to insert assistant turn');
 
-    // 4) セッションに summary を永続化 + 次の一歩を metadata に反映（P0）
-    const prevMeta = (sess.data.metadata ?? {}) as any;
+    // 4) セッションに summary を永続化 + 次の一歩を metadata に反映（1回だけ更新）
+    const prevMeta = (sess.data.metadata ?? {}) as Record<string, any>;
     const mergedMeta = { ...prevMeta, next_steps };
-    await supabase
+    const { error: updErr } = await supabase
       .from('sessions')
       .update({ summary, metadata: mergedMeta })
       .eq('id', id);
+    if (updErr) {
+      console.error('[actions] update session summary/meta failed', updErr);
+      // 失敗しても致命ではないので続行
+    }
 
     // 5) トレース
     await recordTrace({
