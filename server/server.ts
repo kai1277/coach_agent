@@ -273,21 +273,27 @@ async function genQuestionsLLM(
   const context = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
 
   const system = `あなたは1on1のための質問設計エージェントです。
-以下の [CONTEXT]（知識断片）を“参考”に、要件を満たす日本語の質問だけをJSONで返してください。
+以下の [CONTEXT]（知識断片）を“参考”に、要件に合う日本語の質問だけをJSONで返してください。
 必ず JSON のみを出力し、前置きや説明は書かないでください。
 
 [CONTEXT]
 ${context || '(コンテキストなし)'}
 `;
 
-  const user = `入力:
+const user = `入力:
 - strengths_top5: ${JSON.stringify(strengths_top5)}
 - demographics: ${JSON.stringify(demographics)}
 - n: ${n}
 - avoid_texts（この文面は出さない）: ${JSON.stringify(avoid_texts)}
 
+要件（特に n=1 のとき厳守）:
+- ストレングスTop5と基本属性を総合し、最初の1問として「最も効果が高い1問」を設計する
+- YES/NO で答えられるが、内省を促し会話の質を高める問い
+- 文長は 15〜40 文字程度、日本語。曖昧語を避け具体的
+- 既出文面（avoid_texts）は使わない
+
 出力スキーマ（厳守）:
-{ "questions": [ { "theme": "<資質名>", "text": "<日本語の質問文(5〜40文字/YES-NO回答想定)>" }, ... ] }`;
+{ "questions": [ { "theme": "<統合的テーマ名(空でも可)>", "text": "<日本語の質問文>" } ] }`;
 
   const t0 = Date.now();
   const resp = await openai.chat.completions.create({
@@ -644,7 +650,7 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
   try {
     const { id } = req.params;
     const { strengths_top5, demographics, n } = req.body ?? {};
-    const size = Number(n) || 5;
+    const size = Number(n) || 1;
 
     const st = loopOf(id);
 

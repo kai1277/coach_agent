@@ -320,7 +320,7 @@ export default function SessionPage() {
     setSeedLoading(true);
     setSeedError(null);
     try {
-      const payload = { strengths_top5: top5, demographics: demo, n: 5 };
+      const payload = { strengths_top5: top5, demographics: demo, n: 1 };
       const body = await api.sessions.seedQuestions(sid, payload);
 
       let list: SeedQuestion[] = [];
@@ -767,7 +767,6 @@ export default function SessionPage() {
             </section>
           )}
 
-          {/* 種質問プレビュー */}
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">おすすめの初期質問</h2>
@@ -794,7 +793,8 @@ export default function SessionPage() {
                       await fetchNext();
                     }}
                   >
-                    この質問群で診断を開始
+                    {/* ★ 文言だけ変更 */}
+                    この質問で診断を開始
                   </button>
                 )}
               </div>
@@ -803,26 +803,22 @@ export default function SessionPage() {
             {seedError && (
               <div className="text-sm text-red-600">{seedError}</div>
             )}
-
             {!seedQuestions && !seedError && (
               <div className="text-sm text-gray-600">初期質問を準備中…</div>
             )}
 
-            {seedQuestions && (
-              <div className="space-y-2">
-                {seedQuestions.map((q) => (
-                  <div key={q.id} className="p-2 border rounded">
-                    <div className="text-xs text-gray-600 mb-0.5">
-                      テーマ：{q.theme || "（汎用）"}
-                    </div>
-                    <div>{q.text}</div>
-                  </div>
-                ))}
-                {!seedQuestions.length && (
-                  <div className="text-sm text-gray-600">
-                    うまく生成できませんでした。再生成をお試しください。
-                  </div>
-                )}
+            {seedQuestions && seedQuestions.length > 0 && (
+              <div className="p-3 border rounded">
+                <div className="text-xs text-gray-600 mb-0.5">
+                  テーマ：{seedQuestions[0].theme || "（統合）"}
+                </div>
+                <div className="text-base">{seedQuestions[0].text}</div>
+              </div>
+            )}
+
+            {seedQuestions && seedQuestions.length === 0 && (
+              <div className="text-sm text-gray-600">
+                うまく生成できませんでした。再生成をお試しください。
               </div>
             )}
           </section>
