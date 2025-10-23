@@ -429,6 +429,81 @@ ${context || '(なし)'}
   return next_steps;
 }
 
+/* --------------------------- AnswerHistory Collecter ------------------------- */
+
+async function fetchAnswerHistory(session_id: string) {
+  const { data, error } = await supabase
+    .from('turns')
+    .select('content, created_at')
+    .eq('session_id', session_id)
+    .eq('role', 'user')
+    .filter('content->>type', 'eq', 'answer')
+    .order('created_at', { ascending: true });
+  if (error || !data) return [];
+  return data.map(r => ({
+    question_id: (r as any)?.content?.question_id ?? null,
+    answer: (r as any)?.content?.answer ?? null,
+  }));
+}
+
+/* --------------------------- Persona and NextStep Generator ------------------------- */
+
+async function genPersonaAndNextSteps(opts: {
+  strengths_top5?: string[];
+  demographics?: Record<string, any>;
+  answers: Array<{ question_id: string | null; answer: string | null }>;
+}): Promise<{ persona_statement: string; next_steps: string[] }> {
+  const { strengths_top5 = [], demographics = {}, answers = [] } = opts;
+
+  // （任意）RAGを混ぜたいならここで retrieveTopK(JSON.stringify({strengths_top5, demographics, answers})) など
+  const system = `あなたは1on1コーチングの要約・提案アシスタントです。
+出力は必ず JSON のみ。日本語で簡潔に。`;
+
+  const user = `入力:
+- strengths_top5: ${JSON.stringify(strengths_top5)}
+- demographics: ${JSON.stringify(demographics)}
+- answers(時系列): ${JSON.stringify(answers)}
+
+要件:
+- "persona_statement": 断定調で1〜2文。「あなたは〜な人です。」の形。具体例を入れてOK。誇張しすぎない。
+- "next_steps": 1〜3個。短く、行動がわかるTODO。
+
+出力スキーマ（厳守）:
+{
+  "persona_statement": "<断定文>",
+  "next_steps": ["<短いTODO>", "..."]
+}`;
+
+  const t0 = Date.now();
+  const resp = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  });
+
+  const content = resp.choices?.[0]?.message?.content ?? '{}';
+  const parsed = extractJson(content) ?? {};
+  const persona_statement = typeof parsed.persona_statement === 'string'
+    ? parsed.persona_statement.trim()
+    : '';
+  const next_steps: string[] = (Array.isArray(parsed.next_steps) ? parsed.next_steps : [])
+    .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  await recordTrace({
+    model: OPENAI_MODEL,
+    prompt: JSON.stringify({ system, user }),
+    completion: JSON.stringify({ persona_statement, next_steps }),
+    latency_ms: Date.now() - t0,
+  });
+
+  return { persona_statement, next_steps };
+}
+
 /* --------------------------- Loop State (in-memory) ------------------------- */
 
 type LoopState = {
@@ -735,7 +810,7 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     }
 
     // セッションのメタを取得し、asked 巻き上げを反映
-    const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
+    const row = await supabase.from('sessions').select('metadata, summary').eq('id', id).single();
     const meta = row.data?.metadata ?? {};
     const prevAsked = meta?.loop?.progressAsked;
     if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
