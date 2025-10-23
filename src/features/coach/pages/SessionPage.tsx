@@ -1065,10 +1065,6 @@ export default function SessionPage() {
                     {(loopState as any).headline}
                   </div>
                 )}
-                <div className="text-green-700 font-medium">
-                  予測タイプ：{loopState.top.label}（確信度{" "}
-                  {(loopState.top.confidence * 100).toFixed(0)}%）
-                </div>
                 <div>
                   <div className="font-medium">
                     このタイプ向けの「次の一歩」
