@@ -252,13 +252,6 @@ export default function SessionPage() {
     localStorage.setItem(LS_KEY, norm.id);
   }, [restored]);
 
-  // 復元できたら、サーバ側の metadata を使って種質問を自動取得
-  useEffect(() => {
-    if (!sessionId) return;
-    if (seedQuestions && seedQuestions.length > 0) return;
-    fetchSeed(sessionId).catch(() => {});
-  }, [sessionId]);
-
   useEffect(() => {
     setLoopStarted(false);
     setLoopState(null);
@@ -304,8 +297,8 @@ export default function SessionPage() {
       // ★ ここで遷移（クエリ方式）
       navigate(`/app/coach?session=${norm.id}`, { replace: true });
 
-      // もしパスパラメータ方式ならこちらに変更：
-      // navigate(`/app/coach/${norm.id}`);
+      setLoopStarted(true);
+      await fetchNext();
     } catch (e: any) {
       showToast(`開始に失敗：${String(e?.message || e)}`, { type: "error" });
     }
@@ -766,62 +759,6 @@ export default function SessionPage() {
               </div>
             </section>
           )}
-
-          <section className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">おすすめの初期質問</h2>
-              <div className="flex gap-2">
-                <button
-                  className="rounded border px-3 py-1"
-                  onClick={() =>
-                    sessionId &&
-                    fetchSeed(
-                      sessionId,
-                      selected,
-                      identityToDemographics(identity)
-                    )
-                  }
-                  disabled={seedLoading}
-                >
-                  {seedLoading ? "再生成中…" : "もう一度つくる"}
-                </button>
-                {!loopStarted && (
-                  <button
-                    className="rounded bg-black text-white px-3 py-1"
-                    onClick={async () => {
-                      setLoopStarted(true);
-                      await fetchNext();
-                    }}
-                  >
-                    {/* ★ 文言だけ変更 */}
-                    この質問で診断を開始
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {seedError && (
-              <div className="text-sm text-red-600">{seedError}</div>
-            )}
-            {!seedQuestions && !seedError && (
-              <div className="text-sm text-gray-600">初期質問を準備中…</div>
-            )}
-
-            {seedQuestions && seedQuestions.length > 0 && (
-              <div className="p-3 border rounded">
-                <div className="text-xs text-gray-600 mb-0.5">
-                  テーマ：{seedQuestions[0].theme || "（統合）"}
-                </div>
-                <div className="text-base">{seedQuestions[0].text}</div>
-              </div>
-            )}
-
-            {seedQuestions && seedQuestions.length === 0 && (
-              <div className="text-sm text-gray-600">
-                うまく生成できませんでした。再生成をお試しください。
-              </div>
-            )}
-          </section>
 
           {/* 次の一歩 */}
           <section className="space-y-2">

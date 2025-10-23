@@ -720,26 +720,12 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     const { id } = req.params;
     const st = loopOf(id);
 
-    // ← 先に meta を読む（next_steps を取り出す＆progressAsked を st に反映）
-    const row = await supabase
-      .from('sessions')
-      .select('metadata')
-      .eq('id', id)
-      .single();
-    const meta = row.data?.metadata ?? {};
-    const steps = Array.isArray(meta.next_steps) ? meta.next_steps : [];
-
-    const prevAsked = meta?.loop?.progressAsked;
-    if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
-      st.asked = prevAsked;
-    }
-
-    // ← ここで確定判定。確定時は meta の next_steps をそのまま返す
+    // 完了条件（そのまま）
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
-        next_steps: steps, // ★ ここが A 案の肝
+        next_steps: [],
         asked: st.asked,
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
@@ -748,32 +734,52 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       });
     }
 
-    const t0 = Date.now();
-    const qs = await genQuestionsLLM({
-      strengths_top5: meta?.strengths_top5 ?? [],
-      demographics: meta?.demographics ?? {},
-      n: 1,
-      avoid_texts: st.recentTexts,
-    });
-    const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
+    // セッションのメタを取得し、asked 巻き上げを反映
+    const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
+    const meta = row.data?.metadata ?? {};
+    const prevAsked = meta?.loop?.progressAsked;
+    if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
+      st.asked = prevAsked;
+    }
 
+    let q: { id: string; text: string; theme?: string } | null = null;
+
+    // ★ 第1問だけ、seed_questions を優先的に消費して使う
+    if (st.asked === 0) {
+      const seeds: any[] = Array.isArray(meta.seed_questions) ? meta.seed_questions : [];
+      const first = seeds[0];
+      if (first && typeof first.text === 'string' && first.text.trim()) {
+        q = { id: first.id ?? `QSEED_${Date.now()}`, text: first.text.trim(), theme: first.theme ?? '' };
+        // 使った分を取り除いて永続化（任意・履歴を残したいならフラグにする）
+        const newMeta = { ...meta, seed_questions: seeds.slice(1) };
+        await supabase.from('sessions').update({ metadata: newMeta }).eq('id', id);
+      }
+    }
+
+    // 種が無い or 第2問以降は LLM で1問生成
+    if (!q) {
+      const t0 = Date.now();
+      const qs = await genQuestionsLLM({
+        strengths_top5: meta?.strengths_top5 ?? [],
+        demographics: meta?.demographics ?? {},
+        n: 1,
+        avoid_texts: st.recentTexts,
+      });
+      q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
+
+      await recordTrace({
+        session_id: id,
+        model: OPENAI_MODEL,
+        prompt: '(questions/next)',
+        completion: JSON.stringify(q),
+        latency_ms: Date.now() - t0,
+      });
+    }
+
+    // recentTexts に積む
     if (q?.text) {
       st.recentTexts = Array.from(new Set([q.text, ...st.recentTexts])).slice(0, 10);
     }
-
-    await supabase.from('turns').insert({
-      session_id: id,
-      role: 'assistant',
-      content: { type: 'question', question_id: q.id, text: q.text },
-    });
-
-    const traceId = await recordTrace({
-      session_id: id,
-      model: OPENAI_MODEL,
-      prompt: '(questions/next)',
-      completion: JSON.stringify(q),
-      latency_ms: Date.now() - t0,
-    });
 
     return res.status(200).json({
       done: false,
@@ -781,7 +787,7 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       progress: { asked: st.asked, max: st.loop.maxQuestions },
       hint: { topLabel: '', confidence: 0 },
       posterior: neutralPosterior(),
-      trace_id: traceId ?? null,
+      trace_id: null,
     });
   } catch (e) {
     console.error('GET /questions/next error', e);
