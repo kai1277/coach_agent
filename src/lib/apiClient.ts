@@ -156,11 +156,12 @@ export const api = {
         `/api/sessions/${id}/turns${q ? `?${q}` : ""}`
       ).then(r => r.turns ?? []);
     },
-    list(params?: { limit?: number }) {
-      const q = new URLSearchParams();
-      if (params?.limit) q.set("limit", String(params.limit));
-      const qs = q.toString() ? `?${q.toString()}` : "";
-      return request<Array<{ id: string; title?: string | null; created_at: string }>>(`/api/sessions${qs}`);
+    list: async ({ limit = 50 }: { limit?: number } = {}) => {
+      const r = await fetch(`/api/sessions?limit=${limit}`);
+      if (!r.ok) throw new Error("list failed");
+      const j = await r.json();
+      // ここで配列へ正規化
+      return Array.isArray(j?.sessions) ? j.sessions : (Array.isArray(j) ? j : []);
     },
     remove(id: string) {
       return request<{ ok: true }>(`/api/sessions/${id}`, { method: "DELETE" });

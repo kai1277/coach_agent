@@ -228,14 +228,18 @@ export default function SessionPage() {
     Array<{ id: string; title?: string | null; created_at: string }>
   >([]);
   useEffect(() => {
-    // 常に読み込んでも良いですが、初期画面でだけ見せたいなら if (!sessionId) で囲ってOK
     (async () => {
       try {
         const rows = await api.sessions.list({ limit: 20 });
-        setList(rows ?? []);
+        const arr = Array.isArray((rows as any)?.sessions)
+          ? (rows as any).sessions
+          : Array.isArray(rows)
+          ? rows
+          : [];
+        setList(arr);
       } catch (e) {
-        // 失敗時は黙殺でもOK / トーストでもOK
         console.warn("failed to load sessions list", e);
+        setList([]);
       }
     })();
   }, [sessionId]);
@@ -751,10 +755,12 @@ export default function SessionPage() {
         </div>
       )}
 
+      {/* 最近のセッション */}
       {!sessionId && (
         <section className="space-y-2">
           <h2 className="text-xl font-semibold">最近のセッション</h2>
-          {list.length === 0 ? (
+
+          {!Array.isArray(list) || list.length === 0 ? (
             <div className="text-sm text-gray-500">まだありません</div>
           ) : (
             <ul className="space-y-2">
@@ -781,7 +787,11 @@ export default function SessionPage() {
                       onClick={async () => {
                         if (!confirm("削除しますか？")) return;
                         await api.sessions.remove(s.id);
-                        setList((prev) => prev.filter((x) => x.id !== s.id));
+                        setList((prev) =>
+                          Array.isArray(prev)
+                            ? prev.filter((x) => x.id !== s.id)
+                            : []
+                        );
                         if (sessionId === s.id) resetAll();
                       }}
                     >
