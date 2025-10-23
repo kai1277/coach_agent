@@ -614,24 +614,32 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     const { id } = req.params;
     const st = loopOf(id);
 
+    // ← 先に meta を読む（next_steps を取り出す＆progressAsked を st に反映）
+    const row = await supabase
+      .from('sessions')
+      .select('metadata')
+      .eq('id', id)
+      .single();
+    const meta = row.data?.metadata ?? {};
+    const steps = Array.isArray(meta.next_steps) ? meta.next_steps : [];
+
+    const prevAsked = meta?.loop?.progressAsked;
+    if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
+      st.asked = prevAsked;
+    }
+
+    // ← ここで確定判定。確定時は meta の next_steps をそのまま返す
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
-        next_steps: [],
+        next_steps: steps, // ★ ここが A 案の肝
         asked: st.asked,
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
         evidence: [],
         trace_id: null,
       });
-    }
-
-    const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
-    const meta = row.data?.metadata ?? {};
-    const prevAsked = meta?.loop?.progressAsked;
-    if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
-      st.asked = prevAsked;
     }
 
     const t0 = Date.now();
@@ -689,11 +697,20 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       }
     }).eq('id', id);
 
+    // ← 確定判定する前に meta を読んで steps を準備
+    const rowForSteps = await supabase
+      .from('sessions')
+      .select('metadata')
+      .eq('id', id)
+      .single();
+    const metaForSteps = rowForSteps.data?.metadata ?? {};
+    const steps = Array.isArray(metaForSteps.next_steps) ? metaForSteps.next_steps : [];
+
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
-        next_steps: [],
+        next_steps: steps, // ★ ここで返す
         asked: st.asked,
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
@@ -709,6 +726,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       content: { type: 'answer', question_id: req.body?.questionId, answer: req.body?.answer },
     });
 
+    // 次の質問生成用の meta
     const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
     const meta = row.data?.metadata ?? {};
 
