@@ -204,11 +204,6 @@ export default function SessionPage() {
   const [loopError, setLoopError] = useState<string | null>(null);
   const [loopState, setLoopState] = useState<LoopFetch | null>(null);
 
-  // 設定（UIスライダー）
-  const [threshold, setThreshold] = useState(0.9);
-  const [maxQuestions, setMaxQuestions] = useState(8);
-  const [minQuestions, setMinQuestions] = useState(0);
-
   // 種質問の状態
   const [seedLoading, setSeedLoading] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
@@ -254,11 +249,6 @@ export default function SessionPage() {
     const norm = normalizeSession(restored as any);
     setSessionId(norm.id);
     setSessionData(norm as any);
-    if ((restored as any).loop) {
-      setThreshold((restored as any).loop.threshold);
-      setMaxQuestions((restored as any).loop.maxQuestions);
-      setMinQuestions((restored as any).loop.minQuestions ?? 0);
-    }
     localStorage.setItem(LS_KEY, norm.id);
   }, [restored]);
 
@@ -305,11 +295,6 @@ export default function SessionPage() {
       localStorage.setItem(LS_KEY, norm.id);
 
       if (t0 !== null) setTimeToFirst(Math.round(performance.now() - t0));
-      if ((s as any).loop) {
-        setThreshold((s as any).loop.threshold);
-        setMaxQuestions((s as any).loop.maxQuestions);
-        setMinQuestions((s as any).loop.minQuestions ?? 0);
-      }
 
       showToast("セッションを開始しました", { type: "success" });
 
@@ -433,28 +418,6 @@ export default function SessionPage() {
     }
   };
 
-  // 設定の適用
-  const applySettings = async () => {
-    if (!sessionId) return;
-    try {
-      const data = await api.sessions.patchLoop(sessionId, {
-        threshold,
-        maxQuestions,
-        minQuestions,
-      });
-      if (data.loop) {
-        setThreshold(data.loop.threshold);
-        setMaxQuestions(data.loop.maxQuestions);
-        setMinQuestions(data.loop.minQuestions ?? 0);
-      }
-      showToast("しきい値／上限を反映しました", { type: "success" });
-    } catch (e: any) {
-      const msg = String(e?.message || e);
-      setLoopError(msg);
-      showToast(`設定エラー：${msg}`, { type: "error" });
-    }
-  };
-
   // クリア
   const resetAll = () => {
     setSessionId(null);
@@ -544,47 +507,6 @@ export default function SessionPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [loopState]);
-
-  const posterior =
-    loopState && "posterior" in loopState ? loopState.posterior : null;
-
-  const PosteriorBars = ({ p }: { p: Posterior }) => {
-    const items = [
-      { k: "TYPE_STRATEGY", label: "戦略" },
-      { k: "TYPE_EMPATHY", label: "共感" },
-      { k: "TYPE_EXECUTION", label: "実行" },
-      { k: "TYPE_ANALYTICAL", label: "探究" },
-      { k: "TYPE_STABILITY", label: "安定" },
-    ] as const;
-    return (
-      <div className="space-y-2" aria-label="確率分布">
-        {items.map((it) => {
-          const v = Math.round(p[it.k as keyof Posterior] * 100);
-          return (
-            <div key={it.k}>
-              <div className="flex justify-between text-sm">
-                <span>{it.label}</span>
-                <span>{v}%</span>
-              </div>
-              <div
-                className="h-2 bg-gray-200 rounded"
-                role="progressbar"
-                aria-valuenow={v}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={`${it.label}の確率`}
-              >
-                <div
-                  className="h-2 rounded bg-black"
-                  style={{ width: `${v}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
 
   const PersonaView = ({ profile }: { profile: StrengthProfile }) => {
     return (
@@ -1002,59 +924,6 @@ export default function SessionPage() {
       {/* タイプ推定（ベータ） */}
       {sessionId && (
         <section className="space-y-4 border rounded p-3" aria-live="polite">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">タイプ推定（ベータ）</h2>
-            <div className="flex flex-wrap gap-2 text-sm">
-              <div className="flex items-center gap-2">
-                <label className="whitespace-nowrap">
-                  しきい値 ({threshold.toFixed(2)})
-                </label>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={0.99}
-                  step={0.01}
-                  value={threshold}
-                  onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="whitespace-nowrap">
-                  最大質問数 ({maxQuestions})
-                </label>
-                <input
-                  type="range"
-                  min={3}
-                  max={12}
-                  step={1}
-                  value={maxQuestions}
-                  onChange={(e) => setMaxQuestions(parseInt(e.target.value))}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="whitespace-nowrap">
-                  最低質問数 ({minQuestions})
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  step={1}
-                  value={minQuestions}
-                  onChange={(e) => setMinQuestions(parseInt(e.target.value))}
-                  aria-label="最低質問数"
-                  title="この回数に達するまでは確定しません"
-                />
-              </div>
-              <button
-                className="rounded border px-3 py-1"
-                onClick={applySettings}
-              >
-                適用
-              </button>
-            </div>
-          </div>
-
           {!loopStarted && (
             <button
               className="rounded bg-black text-white px-4 py-2"
@@ -1065,13 +934,6 @@ export default function SessionPage() {
             >
               診断を開始
             </button>
-          )}
-
-          {posterior && (
-            <div className="space-y-2">
-              <div className="text-sm text-gray-600">現在の確率分布</div>
-              <PosteriorBars p={posterior} />
-            </div>
           )}
 
           {loopStarted &&
