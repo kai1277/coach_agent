@@ -75,12 +75,58 @@ function extractJson(text: string): any | null {
   }
 }
 
-async function retrieveTopK(query: string, k = 3): Promise<Array<{ content: string }>> {
+function clampText(input: string, max = 2000) {
+  // Embedding 入力を長過ぎないように安全カット（UTF-16 ベースでOK）
+  if (!input) return '';
+  return input.length > max ? input.slice(0, max) : input;
+}
+
+type RAGQuery =
+  | string
+  | {
+      strengths_top5?: string[];
+      demographics?: Record<string, any>;
+      avoid_texts?: string[];
+      n?: number;
+      purpose?: string; // "1on1 question generation" など
+      extra?: Record<string, any>; // 将来拡張用（context等）
+    };
+
+async function retrieveTopK(query: RAGQuery, k = 3): Promise<Array<{ content: string }>> {
   try {
-    const emb = await openai.embeddings.create({ model: OPENAI_EMBED_MODEL, input: query });
+    // ── 受け取った条件をまとめて 1 本の検索クエリ文字列にする ──
+    let qStr: string;
+    if (typeof query === 'string') {
+      qStr = query;
+    } else {
+      const {
+        strengths_top5 = [],
+        demographics = {},
+        avoid_texts = [],
+        n,
+        purpose = '1on1 question generation / coaching',
+        extra = {},
+      } = query ?? {};
+
+      qStr = [
+        `[PURPOSE] ${purpose}`,
+        strengths_top5.length ? `[STRENGTHS] ${strengths_top5.join(', ')}` : '',
+        Object.keys(demographics).length ? `[DEMOGRAPHICS] ${JSON.stringify(demographics)}` : '',
+        avoid_texts.length ? `[AVOID_TEXTS] ${avoid_texts.join(' | ')}` : '',
+        typeof n === 'number' ? `[NUM_QUESTIONS] ${n}` : '',
+        Object.keys(extra).length ? `[EXTRA] ${JSON.stringify(extra)}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    const input = clampText(qStr, 2000);
+    const emb = await openai.embeddings.create({ model: OPENAI_EMBED_MODEL, input });
     const vec = emb.data[0].embedding as number[];
+
     const { data, error } = await supabase
       .rpc('match_knowledge_chunks', { query_embedding: vec as any, match_count: k });
+
     if (error) {
       console.warn('[retrieveTopK] rpc error (fallback to empty):', error.message);
       return [];
@@ -190,7 +236,21 @@ async function genQuestionsLLM(
 
   // RAG用知識を取り込み
   const query = JSON.stringify({ strengths_top5, demographics });
-  const kb = await retrieveTopK(query, 3);
+  const kb = await retrieveTopK(
+    {
+      strengths_top5,
+      demographics,
+      avoid_texts,
+      n,
+      purpose: '1on1 coaching: generate concise yes/no seed questions',
+      // 追加で混ぜたいメタがあれば extra に
+      extra: {
+        // 例: ドメイン、プロダクト名、セッションの context など
+        // context: 'interview practice',
+      },
+    },
+    3 // k
+  );
   const context = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
 
   const system = `あなたは1on1のための質問設計エージェントです。
@@ -351,6 +411,22 @@ app.post('/api/sessions', async (req, res) => {
   }
 });
 
+// 一覧
+app.get('/api/sessions', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(String(req.query.limit ?? '50')), 200);
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('id, title, summary, created_at')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) return res.status(500).json({ error: 'failed to list sessions' });
+    res.json({ sessions: data ?? [] });
+  } catch (e) {
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
 app.get('/api/sessions/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -395,6 +471,20 @@ app.get('/api/sessions/:id', async (req, res) => {
   } catch (e) {
     console.error('GET /api/sessions/:id internal error', e);
     return res.status(500).json({ error: 'internal error' });
+  }
+});
+
+// 削除
+app.delete('/api/sessions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    // 関連turnsを先に削除（FK制約対応）
+    await supabase.from('turns').delete().eq('session_id', id);
+    const del = await supabase.from('sessions').delete().eq('id', id).select('id').single();
+    if (del.error) return res.status(500).json({ error: 'failed to delete' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'internal error' });
   }
 });
 

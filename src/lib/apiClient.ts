@@ -5,6 +5,7 @@ import type {
   Answer5,
   ApiError,
   Demographics,
+  Turn,
 } from "../types/api";
 
 const API_MODE = (import.meta as any).env?.VITE_API_MODE ?? "mock"; // 'mock' | 'real'
@@ -142,6 +143,27 @@ export const api = {
         `/api/sessions/${id}/seed-questions`,
         { method: "POST", body: JSON.stringify(body) }
       );
+    },
+    listTurns(
+      id: string,
+      opts: { order?: "asc" | "desc"; limit?: number } = {}
+    ) {
+      const qs = new URLSearchParams();
+      if (opts.order) qs.set("order", opts.order);
+      if (opts.limit) qs.set("limit", String(opts.limit));
+      const q = qs.toString();
+      return request<{ turns: Turn[] }>(
+        `/api/sessions/${id}/turns${q ? `?${q}` : ""}`
+      ).then(r => r.turns ?? []);
+    },
+    list(params?: { limit?: number }) {
+      const q = new URLSearchParams();
+      if (params?.limit) q.set("limit", String(params.limit));
+      const qs = q.toString() ? `?${q.toString()}` : "";
+      return request<Array<{ id: string; title?: string | null; created_at: string }>>(`/api/sessions${qs}`);
+    },
+    remove(id: string) {
+      return request<{ ok: true }>(`/api/sessions/${id}`, { method: "DELETE" });
     },
   },
 };

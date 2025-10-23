@@ -16,7 +16,9 @@ import type {
   Answer5,
 } from "../../../types/api";
 import { api } from "../../../lib/apiClient";
-import { apiClient } from "../../../lib/apiClient";
+import { useQueryClient } from "@tanstack/react-query";
+import AnswerLog from "../../session/components/AnswerLog";
+import { useTurns } from "../../session/hooks/useTurns";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -187,7 +189,8 @@ export default function SessionPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionData, setSessionData] = useState<SessionDTO | null>(null);
 
-  const advance = useNextStep(sessionId);
+  // null を undefined に正規化して渡す（hook 側の型と一致させる）
+  const advance = useNextStep(sessionId ?? null);
   const [refineText, setRefineText] = useState("");
 
   const [timeToFirst, setTimeToFirst] = useState<number | null>(null);
@@ -216,6 +219,25 @@ export default function SessionPage() {
   const sessionFromUrl = sp.get("session");
   const { data: restored } = useLoadSession(sessionFromUrl);
 
+  const qc = useQueryClient();
+  const { data: turns = [] } = useTurns(sessionId ?? undefined);
+
+  const [list, setList] = useState<
+    Array<{ id: string; title?: string | null; created_at: string }>
+  >([]);
+  useEffect(() => {
+    // 常に読み込んでも良いですが、初期画面でだけ見せたいなら if (!sessionId) で囲ってOK
+    (async () => {
+      try {
+        const rows = await api.sessions.list({ limit: 20 });
+        setList(rows ?? []);
+      } catch (e) {
+        // 失敗時は黙殺でもOK / トーストでもOK
+        console.warn("failed to load sessions list", e);
+      }
+    })();
+  }, [sessionId]);
+
   // 復元 → 正規化して保持
   useEffect(() => {
     if (!restored) return;
@@ -229,6 +251,19 @@ export default function SessionPage() {
     }
     localStorage.setItem(LS_KEY, norm.id);
   }, [restored]);
+
+  // 復元できたら、サーバ側の metadata を使って種質問を自動取得
+  useEffect(() => {
+    if (!sessionId) return;
+    if (seedQuestions && seedQuestions.length > 0) return;
+    fetchSeed(sessionId).catch(() => {});
+  }, [sessionId]);
+
+  useEffect(() => {
+    setLoopStarted(false);
+    setLoopState(null);
+    setLoopError(null);
+  }, [sessionId]);
 
   // セッション開始
   const onStart = async () => {
@@ -284,7 +319,7 @@ export default function SessionPage() {
   // 種質問取得（サーバのキー揺れに対応）
   const fetchSeed = async (
     sid: string,
-    top5?: string[],
+    top5?: StrengthTheme[],
     demo?: Demographics
   ) => {
     setSeedLoading(true);
@@ -351,6 +386,9 @@ export default function SessionPage() {
         answer: a,
       });
       setLoopState(data as any);
+      // 回答ログとセッションの最新化
+      qc.invalidateQueries({ queryKey: ["turns", sessionId] });
+      qc.invalidateQueries({ queryKey: ["session", sessionId] });
       if ((data as any).done)
         showToast("推定が確定しました", { type: "success" });
     } catch (e: any) {
@@ -371,6 +409,9 @@ export default function SessionPage() {
       const data = await api.sessions.undo(sessionId);
       setLoopState(data as any);
       showToast("直前の回答を取り消しました", { type: "info" });
+      // 取り消し後のログとセッションの最新化
+      qc.invalidateQueries({ queryKey: ["turns", sessionId] });
+      qc.invalidateQueries({ queryKey: ["session", sessionId] });
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -671,6 +712,50 @@ export default function SessionPage() {
         </div>
       )}
 
+      {!sessionId && (
+        <section className="space-y-2">
+          <h2 className="text-xl font-semibold">最近のセッション</h2>
+          {list.length === 0 ? (
+            <div className="text-sm text-gray-500">まだありません</div>
+          ) : (
+            <ul className="space-y-2">
+              {list.map((s) => (
+                <li
+                  key={s.id}
+                  className="p-2 border rounded flex items-center justify-between"
+                >
+                  <div>
+                    <div className="font-medium">{s.title || "(no title)"}</div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(s.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="underline text-sm"
+                      onClick={() => navigate(`/app/coach?session=${s.id}`)}
+                    >
+                      開く
+                    </button>
+                    <button
+                      className="text-red-600 underline text-sm"
+                      onClick={async () => {
+                        if (!confirm("削除しますか？")) return;
+                        await api.sessions.remove(s.id);
+                        setList((prev) => prev.filter((x) => x.id !== s.id));
+                        if (sessionId === s.id) resetAll();
+                      }}
+                    >
+                      削除
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {/* ===== 初回結果 ===== */}
       {sessionId && (sessionData || create.data) && (
         <div className="space-y-4">
@@ -700,6 +785,16 @@ export default function SessionPage() {
               共有リンクをコピー
             </button>
           </div>
+
+          {/* 要約（サーバ永続） */}
+          {sessionId && (
+            <section className="space-y-2">
+              <h2 className="text-xl font-semibold">要約</h2>
+              <div className="rounded border p-3 whitespace-pre-wrap">
+                {safeSession.summary ?? "（要約はまだありません）"}
+              </div>
+            </section>
+          )}
 
           {/* 種質問プレビュー */}
           <section className="space-y-2">
@@ -784,6 +879,13 @@ export default function SessionPage() {
               ))}
             </ul>
           </section>
+
+          {/* 回答履歴（turns） */}
+          {turns.length === 0 ? (
+            <div className="text-sm text-gray-500">まだ回答はありません</div>
+          ) : (
+            <AnswerLog turns={turns} />
+          )}
         </div>
       )}
 
@@ -822,6 +924,10 @@ export default function SessionPage() {
                   setSessionData(norm as any);
                   setRefineText("");
                   showToast("更新しました", { type: "success" });
+                  if (sessionId) {
+                    qc.invalidateQueries({ queryKey: ["session", sessionId] });
+                    qc.invalidateQueries({ queryKey: ["turns", sessionId] });
+                  }
                 } catch {}
               }}
               disabled={advance.isPending || !refineText}
@@ -981,6 +1087,14 @@ export default function SessionPage() {
                     onClick={undo}
                   >
                     直前の回答を取り消す
+                  </button>
+                  <button
+                    className="rounded border px-3 py-1"
+                    onClick={() =>
+                      qc.invalidateQueries({ queryKey: ["turns", sessionId] })
+                    }
+                  >
+                    ログの再読み込み
                   </button>
                 </div>
 

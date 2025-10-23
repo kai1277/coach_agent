@@ -133,3 +133,11 @@ export type SessionGetResponse = {
   };
   loop: { threshold: number; maxQuestions: number };
 };
+
+export type Turn = {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: any;              // { type: 'answer' | 'instruction', ... }
+  created_at: string;        // ISO
+};
