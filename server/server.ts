@@ -797,6 +797,25 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 
     // 完了条件（そのまま）
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
+      const row = await supabase.from('sessions').select('metadata, summary').eq('id', id).single();
+
+      const meta = row.data?.metadata ?? {};
+      const answers = await fetchAnswerHistory(id);
+
+      const out = await genPersonaAndNextSteps({
+        strengths_top5: meta?.strengths_top5 ?? [],
+        demographics: meta?.demographics ?? {},
+        answers,
+      });
+
+      await supabase
+        .from('sessions')
+        .update({
+          summary: out.persona_statement,
+          metadata: { ...meta, next_steps: out.next_steps },
+        })
+        .eq('id', id);
+
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
@@ -805,6 +824,7 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
         evidence: [],
+        persona_statement: out.persona_statement,
         trace_id: null,
       });
     }
@@ -900,28 +920,32 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     // 3) 完了判定は「回答保存後」に行う
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
       // 3-1) 次の一歩を生成
-      const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
+      const row = await supabase.from('sessions').select('metadata, summary').eq('id', id).single();
       const meta = row.data?.metadata ?? {};
-      const qa_pairs = await fetchQAPairs(id);
-      const next_steps = await genNextStepsLLM({
+      const answers = await fetchAnswerHistory(id);
+      
+      const out = await genPersonaAndNextSteps({
         strengths_top5: meta?.strengths_top5 ?? [],
         demographics: meta?.demographics ?? {},
-        qa_pairs,
-        n: 3,
+        answers,
       });
 
-      // 3-2) セッションに永続化
-      const mergedMeta = { ...meta, next_steps };
-      await supabase.from('sessions').update({ metadata: mergedMeta }).eq('id', id);
+      await supabase
+        .from('sessions')
+        .update({
+          summary: out.persona_statement,
+          metadata: { ...meta, next_steps: out.next_steps },
+        })
+        .eq('id', id);
 
       return res.status(200).json({
         done: true,
-        top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
-        next_steps,
+        next_steps: out.next_steps,
         asked: st.asked,
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
         evidence: [],       // ここは必要なら将来、寄与ロジックで埋める
+        persona_statement: out.persona_statement,
         trace_id: null,
       });
     }
