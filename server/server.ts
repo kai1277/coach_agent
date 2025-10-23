@@ -323,6 +323,106 @@ ${context || '(コンテキストなし)'}
   return out;
 }
 
+/* --------------------------- Q&A Collecter ------------------------- */
+
+async function fetchQAPairs(session_id: string) {
+  const { data, error } = await supabase
+    .from('turns')
+    .select('id, role, content, created_at')
+    .eq('session_id', session_id)
+    .order('created_at', { ascending: true });
+
+  if (error || !data) return [];
+
+  const questions = new Map<string, { id: string; text: string; created_at: string }>();
+  const pairs: Array<{ question_id: string; question_text: string; answer: string }> = [];
+
+  for (const t of data) {
+    const c = t.content as any;
+    if (t.role === 'assistant' && c?.type === 'question' && c?.question_id && c?.text) {
+      questions.set(c.question_id, { id: c.question_id, text: String(c.text), created_at: t.created_at });
+    }
+  }
+  for (const t of data) {
+    const c = t.content as any;
+    if (t.role === 'user' && c?.type === 'answer' && c?.question_id && c?.answer) {
+      const q = questions.get(c.question_id);
+      if (q) {
+        pairs.push({
+          question_id: c.question_id,
+          question_text: q.text,
+          answer: String(c.answer), // 'YES' | 'PROB_YES' | ...
+        });
+      }
+    }
+  }
+  return pairs;
+}
+
+/* --------------------------- LLM NextStep Generater ------------------------- */
+
+async function genNextStepsLLM(opts: {
+  strengths_top5?: string[];
+  demographics?: Record<string, any>;
+  qa_pairs: Array<{ question_text: string; answer: string }>;
+  n?: number; // デフォルト3
+}) {
+  const { strengths_top5 = [], demographics = {}, qa_pairs = [], n = 3 } = opts;
+
+  // RAG も活用（ストレングス・デモグラ・回答概要を条件に混ぜる）
+  const ragQuery = JSON.stringify({
+    strengths_top5,
+    demographics,
+    answers: qa_pairs.slice(-10).map(p => ({ q: p.question_text, a: p.answer })), // 直近10件だけ
+  });
+  const kb = await retrieveTopK(ragQuery, 4);
+  const context = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
+
+  const system = `あなたは1on1のコーチングアシスタントです。
+ストレングスや属性、Q&A履歴を踏まえ、短く具体的な「次の一歩」（ToDo）を日本語で提案します。
+- 出力は JSON のみ
+- 1件あたり40文字以内 / 箇条書き
+- 行動の主体はユーザー本人
+- 安全で実行可能、今週から着手できる内容`;
+
+  const user = `前提:
+- strengths_top5: ${JSON.stringify(strengths_top5)}
+- demographics: ${JSON.stringify(demographics)}
+- qa_pairs(最新→古い): ${JSON.stringify(qa_pairs.slice().reverse())}
+
+参考知識:
+${context || '(なし)'}
+
+出力スキーマ(厳守):
+{ "next_steps": ["<短いToDo>", "<短いToDo>", "<短いToDo>"] }`;
+
+  const t0 = Date.now();
+  const resp = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    temperature: 0.3,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  });
+
+  const content = resp.choices?.[0]?.message?.content ?? '{}';
+  const parsed = extractJson(content) ?? {};
+  const next_steps: string[] = (Array.isArray(parsed.next_steps) ? parsed.next_steps : [])
+    .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
+    .filter(Boolean)
+    .slice(0, n);
+
+  await recordTrace({
+    model: OPENAI_MODEL,
+    prompt: JSON.stringify({ system, user }),
+    completion: JSON.stringify({ next_steps }),
+    latency_ms: Date.now() - t0,
+  });
+
+  return next_steps;
+}
+
 /* --------------------------- Loop State (in-memory) ------------------------- */
 
 type LoopState = {
@@ -655,6 +755,12 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       st.recentTexts = Array.from(new Set([q.text, ...st.recentTexts])).slice(0, 10);
     }
 
+    await supabase.from('turns').insert({
+      session_id: id,
+      role: 'assistant',
+      content: { type: 'question', question_id: q.id, text: q.text },
+    });
+
     const traceId = await recordTrace({
       session_id: id,
       model: OPENAI_MODEL,
@@ -687,9 +793,16 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
   try {
     const { id } = req.params;
     const st = loopOf(id);
-    st.asked += 1;
 
-    // 進捗を永続化
+    // 1) まず回答を保存
+    await supabase.from('turns').insert({
+      session_id: id,
+      role: 'user',
+      content: { type: 'answer', question_id: req.body?.questionId, answer: req.body?.answer },
+    });
+
+    // 2) 進捗を更新
+    st.asked += 1;
     await supabase.from('sessions').update({
       metadata: {
         ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
@@ -697,36 +810,36 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       }
     }).eq('id', id);
 
-    // ← 確定判定する前に meta を読んで steps を準備
-    const rowForSteps = await supabase
-      .from('sessions')
-      .select('metadata')
-      .eq('id', id)
-      .single();
-    const metaForSteps = rowForSteps.data?.metadata ?? {};
-    const steps = Array.isArray(metaForSteps.next_steps) ? metaForSteps.next_steps : [];
-
+    // 3) 完了判定は「回答保存後」に行う
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
+      // 3-1) 次の一歩を生成
+      const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
+      const meta = row.data?.metadata ?? {};
+      const qa_pairs = await fetchQAPairs(id);
+      const next_steps = await genNextStepsLLM({
+        strengths_top5: meta?.strengths_top5 ?? [],
+        demographics: meta?.demographics ?? {},
+        qa_pairs,
+        n: 3,
+      });
+
+      // 3-2) セッションに永続化
+      const mergedMeta = { ...meta, next_steps };
+      await supabase.from('sessions').update({ metadata: mergedMeta }).eq('id', id);
+
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
-        next_steps: steps, // ★ ここで返す
+        next_steps,
         asked: st.asked,
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
-        evidence: [],
+        evidence: [],       // ここは必要なら将来、寄与ロジックで埋める
         trace_id: null,
       });
     }
 
-    // 回答ログを保存（turns）
-    await supabase.from('turns').insert({
-      session_id: id,
-      role: 'user',
-      content: { type: 'answer', question_id: req.body?.questionId, answer: req.body?.answer },
-    });
-
-    // 次の質問生成用の meta
+    // 4) 継続の場合は次の質問を作る
     const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
     const meta = row.data?.metadata ?? {};
 
@@ -738,6 +851,13 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       avoid_texts: st.recentTexts,
     });
     const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '直近の小さな成功はありますか？', theme: '' };
+
+    // turns に質問を保存（継続時も入れる）
+    await supabase.from('turns').insert({
+      session_id: id,
+      role: 'assistant',
+      content: { type: 'question', question_id: q.id, text: q.text },
+    });
 
     const traceId = await recordTrace({
       session_id: id,
