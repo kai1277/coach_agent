@@ -204,13 +204,6 @@ export default function SessionPage() {
   const [loopError, setLoopError] = useState<string | null>(null);
   const [loopState, setLoopState] = useState<LoopFetch | null>(null);
 
-  // 種質問の状態
-  const [seedLoading, setSeedLoading] = useState(false);
-  const [seedError, setSeedError] = useState<string | null>(null);
-  const [seedQuestions, setSeedQuestions] = useState<SeedQuestion[] | null>(
-    null
-  );
-
   // URL パラメータから復元
   const [sp, setSp] = useSearchParams();
   const sessionFromUrl = sp.get("session");
@@ -291,9 +284,6 @@ export default function SessionPage() {
 
       showToast("セッションを開始しました", { type: "success" });
 
-      // おすすめ質問を準備（非同期でOK）
-      fetchSeed(norm.id, selected, demographics).catch(() => {});
-
       // ★ ここで遷移（クエリ方式）
       navigate(`/app/coach?session=${norm.id}`, { replace: true });
 
@@ -301,47 +291,6 @@ export default function SessionPage() {
       await fetchNext();
     } catch (e: any) {
       showToast(`開始に失敗：${String(e?.message || e)}`, { type: "error" });
-    }
-  };
-
-  // 種質問取得（サーバのキー揺れに対応）
-  const fetchSeed = async (
-    sid: string,
-    top5?: StrengthTheme[],
-    demo?: Demographics
-  ) => {
-    setSeedLoading(true);
-    setSeedError(null);
-    try {
-      const payload = { strengths_top5: top5, demographics: demo, n: 1 };
-      const body = await api.sessions.seedQuestions(sid, payload);
-
-      let list: SeedQuestion[] = [];
-      if (Array.isArray((body as any)?.questions)) {
-        list = (body as any).questions.map((q: any, idx: number) =>
-          typeof q === "string"
-            ? { id: `seed-${idx + 1}`, theme: "", text: q }
-            : {
-                id: q.id ?? `seed-${idx + 1}`,
-                theme: q.theme ?? "",
-                text: q.text ?? "",
-              }
-        );
-      } else if (Array.isArray((body as any)?.seed_questions)) {
-        list = (body as any).seed_questions.map(
-          (text: string, idx: number) => ({
-            id: `seed-${idx + 1}`,
-            theme: "",
-            text,
-          })
-        );
-      }
-      setSeedQuestions(list);
-    } catch (e: any) {
-      setSeedError(String(e?.message || e));
-      setSeedQuestions(null);
-    } finally {
-      setSeedLoading(false);
     }
   };
 
@@ -432,9 +381,6 @@ export default function SessionPage() {
     setSelected([]);
     setQuery("");
     setIdentity({} as IdentityValue);
-    setSeedQuestions(null);
-    setSeedError(null);
-    setSeedLoading(false);
     create.reset();
     advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
@@ -751,11 +697,11 @@ export default function SessionPage() {
           </div>
 
           {/* 要約（サーバ永続） */}
-          {sessionId && (
+          {sessionId && safeSession.summary?.trim() && (
             <section className="space-y-2">
               <h2 className="text-xl font-semibold">要約</h2>
               <div className="rounded border p-3 whitespace-pre-wrap">
-                {safeSession.summary ?? "（要約はまだありません）"}
+                {safeSession.summary}
               </div>
             </section>
           )}
@@ -862,7 +808,7 @@ export default function SessionPage() {
               className="rounded bg-black text-white px-4 py-2"
               onClick={async () => {
                 setLoopStarted(true);
-                await fetchNext();
+                await fetchNext(); // 初手＝統合初期質問が出る
               }}
             >
               診断を開始
@@ -876,8 +822,6 @@ export default function SessionPage() {
               <div className="space-y-3" aria-busy={loopBusy}>
                 <div className="text-sm text-gray-600">
                   進捗: {loopState.progress.asked}/{loopState.progress.max}
-                  　現在のトップ: {loopState.hint.topLabel}
-                  （確信度 {(loopState.hint.confidence * 100).toFixed(0)}%）
                 </div>
 
                 <div className="p-3 rounded border">
@@ -999,9 +943,7 @@ export default function SessionPage() {
                   </div>
                 )}
                 <div>
-                  <div className="font-medium">
-                    このタイプ向けの「次の一歩」
-                  </div>
+                  <div className="font-medium">あなたへの「次の一歩」</div>
                   <ul className="pl-0">
                     {loopState.next_steps.map((s, i) => (
                       <li key={i} className="list-none">
