@@ -45,6 +45,8 @@ type LoopFetch =
       progress: { asked: number; max: number };
       hint: { topLabel: string; confidence: number };
       posterior: Posterior;
+      /** ★ 生成トレースID（HITL投稿に使う） */
+      trace_id?: string | null;
     }
   | {
       done: true;
@@ -238,6 +240,10 @@ export default function SessionPage() {
     })();
   }, [sessionId]);
 
+  const [lastTraceId, setLastTraceId] = useState<string | null>(null);
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbNote, setFbNote] = useState("");
+
   // 復元 → 正規化して保持
   useEffect(() => {
     if (!restored) return;
@@ -365,6 +371,7 @@ export default function SessionPage() {
     try {
       const data = await api.sessions.getNext(sessionId);
       setLoopState(data as any);
+      setLastTraceId((data as any)?.trace_id ?? null);
       setTimeout(() => firstAnswerBtnRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
@@ -386,6 +393,7 @@ export default function SessionPage() {
         answer: a,
       });
       setLoopState(data as any);
+      setLastTraceId((data as any)?.trace_id ?? null);
       // 回答ログとセッションの最新化
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       qc.invalidateQueries({ queryKey: ["session", sessionId] });
@@ -470,6 +478,37 @@ export default function SessionPage() {
     create.reset();
     advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
+  };
+
+  const sendFeedback = async (kind: "up" | "down") => {
+    if (!lastTraceId) {
+      showToast("評価対象がありません（trace_idなし）", { type: "error" });
+      return;
+    }
+    setFbBusy(true);
+    try {
+      // 最小実装：fetch 直叩き（apiClient に生やしてもOK）
+      const resp = await fetch("/api/hitl/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trace_id: lastTraceId,
+          target: "question", // 今回は質問の質に対する評価
+          reviewer: "anon", // 任意：ログインがあればユーザー名
+          comments: (kind === "up" ? "👍 " : "👎 ") + (fbNote ?? ""),
+          rubric_version: "rubric_v1.0",
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      setFbNote(""); // 送ったらメモはクリア
+      showToast("評価ありがとうございました！", { type: "success" });
+    } catch (e: any) {
+      showToast(`送信に失敗しました: ${String(e?.message || e)}`, {
+        type: "error",
+      });
+    } finally {
+      setFbBusy(false);
+    }
   };
 
   // キーショートカット（1..5で回答）
@@ -1071,6 +1110,46 @@ export default function SessionPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* === 質問に対するワンクリック評価 === */}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-sm text-gray-600">
+                    この質問は役に立ちましたか？
+                  </span>
+                  <button
+                    className="px-2 py-1 rounded border disabled:opacity-50"
+                    disabled={!lastTraceId || fbBusy}
+                    onClick={() => sendFeedback("up")}
+                    title="役に立った"
+                  >
+                    👍 良い
+                  </button>
+                  <button
+                    className="px-2 py-1 rounded border disabled:opacity-50"
+                    disabled={!lastTraceId || fbBusy}
+                    onClick={() => sendFeedback("down")}
+                    title="役に立たない／改善してほしい"
+                  >
+                    👎 微妙
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    className="flex-1 rounded border p-2 text-sm"
+                    placeholder="任意メモ（なぜ良い/悪い？改善案など）"
+                    value={fbNote}
+                    onChange={(e) => setFbNote(e.target.value)}
+                    disabled={!lastTraceId || fbBusy}
+                  />
+                  <button
+                    className="px-3 py-1 rounded border text-sm disabled:opacity-50"
+                    disabled={!lastTraceId || fbBusy || !fbNote.trim()}
+                    onClick={() => sendFeedback("down")}
+                    title="メモ付きで送信（改善要望など）"
+                  >
+                    送信
+                  </button>
                 </div>
 
                 <div className="flex gap-2">

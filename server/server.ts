@@ -220,6 +220,25 @@ async function markTurnUndo(turn_id: string, content: any) {
   if (error) console.warn('[markTurnUndo] update failed', error.message);
 }
 
+function loadLoopState(meta: any) {
+  const asked = Number(meta?.loop?.progressAsked ?? 0);
+  const recentTexts: string[] = Array.isArray(meta?.loop_state?.recentTexts) ? meta.loop_state.recentTexts : [];
+  const loopCfg = {
+    threshold: Number(meta?.loop?.threshold ?? 0.9),
+    maxQuestions: Number(meta?.loop?.maxQuestions ?? 8),
+    minQuestions: Number(meta?.loop?.minQuestions ?? 0),
+  };
+  return { asked, recentTexts, loopCfg };
+}
+
+async function saveLoopState(sessionId: string, updater: (meta: any) => any) {
+  const cur = await supabase.from('sessions').select('metadata').eq('id', sessionId).single();
+  const meta = (cur.data?.metadata ?? {});
+  const next = updater(meta);
+  await supabase.from('sessions').update({ metadata: next }).eq('id', sessionId);
+  return next;
+}
+
 /* --------------------------- LLM Question Generator ------------------------- */
 
 type Question = { id: string; theme: string; text: string };
@@ -604,6 +623,7 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
         evidence: [],
+        trace_id: null,
       });
     }
 
@@ -627,7 +647,7 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       st.recentTexts = Array.from(new Set([q.text, ...st.recentTexts])).slice(0, 10);
     }
 
-    await recordTrace({
+    const traceId = await recordTrace({
       session_id: id,
       model: OPENAI_MODEL,
       prompt: '(questions/next)',
@@ -641,6 +661,7 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       progress: { asked: st.asked, max: st.loop.maxQuestions },
       hint: { topLabel: '', confidence: 0 },
       posterior: neutralPosterior(),
+      trace_id: traceId ?? null,
     });
   } catch (e) {
     console.error('GET /questions/next error', e);
@@ -677,6 +698,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
         evidence: [],
+        trace_id: null,
       });
     }
 
@@ -699,7 +721,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     });
     const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '直近の小さな成功はありますか？', theme: '' };
 
-    await recordTrace({
+    const traceId = await recordTrace({
       session_id: id,
       model: OPENAI_MODEL,
       prompt: '(answers -> generate next)',
@@ -717,6 +739,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       progress: { asked: st.asked, max: st.loop.maxQuestions },
       hint: { topLabel: '', confidence: 0 },
       posterior: neutralPosterior(),
+      trace_id: traceId || null,
     });
   } catch (e) {
     console.error('POST /answers error', e);
@@ -775,6 +798,7 @@ app.post('/api/sessions/:id/answers/undo', async (req, res) => {
       hint: { topLabel: '', confidence: 0 },
       posterior: neutralPosterior(),
       debug: deleteInfo,  // ★ 削除の可否を可視化
+      trace_id: null,
     });
   } catch (e) {
     console.error('POST /answers/undo error', e);
@@ -875,6 +899,8 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
       .single();
     if (userTurn.error) return sendErr(res, 500, 'failed to insert user turn');
 
+    function clamp(s: string, max = 2000) { return s.length > max ? s.slice(0, max) : s; }
+
     // 2) LLM 呼び出し（STAR要約＋次の一歩）
     const system = `あなたは1on1の要約・次の一歩設計アシスタントです。
 - 出力は必ず JSON のみ。
@@ -883,9 +909,9 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
   "summary": "<2〜4文の日本語要約>",
   "next_steps": ["<短いTODO>", "..."]
 }`;
-    const user = `前提メモ: ${sess.data.summary ?? '(なし)'}
-メタ情報: ${JSON.stringify(sess.data.metadata ?? {})}
-指示: ${instruction}
+    const user = `前提メモ: ${clamp(sess.data.summary ?? '(なし)')}
+メタ情報: ${clamp(JSON.stringify(sess.data.metadata ?? {}), 2000)}
+指示: ${clamp(instruction, 500)}
 制約:
 - next_steps は 3 件までで短く具体的に
 - JSON 以外の文字は出力しない`;
@@ -937,7 +963,7 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
     }
 
     // 5) トレース
-    await recordTrace({
+    const traceId = await recordTrace({
       session_id: id,
       turn_id: asstTurn.data?.id,
       model: OPENAI_MODEL,
@@ -952,6 +978,7 @@ app.post('/api/sessions/:id/actions', async (req, res) => {
       createdAt: new Date().toISOString(),
       output: { summary, hypotheses: [], next_steps, citations: [], persona: null },
       loop: { threshold: 0.9, maxQuestions: 8, minQuestions: 0 },
+      trace_id: traceId || null,
     });
   } catch (e: any) {
     console.error('POST /actions error', e);
@@ -983,6 +1010,20 @@ app.post('/api/knowledge/import', async (req, res) => {
   } catch (e: any) {
     console.error('POST /api/knowledge/import error', e);
     return res.status(500).json({ error: 'internal error' });
+  }
+});
+
+// 追加: RAG 検索プレビュー用
+app.get('/api/knowledge/search', async (req, res) => {
+  try {
+    const q = String(req.query.q ?? '');
+    const top = Number(req.query.k ?? 3);
+    if (!q.trim()) return res.status(400).json({ error: 'q is required' });
+    const hits = await retrieveTopK(q, Math.min(Math.max(top, 1), 10));
+    res.json({ hits });
+  } catch (e:any) {
+    console.error('[GET /knowledge/search]', e);
+    res.status(500).json({ error: 'internal error' });
   }
 });
 
