@@ -1,0 +1,49 @@
+id: STR-individualization
+strength: 個別化 (Individualization)
+domain: 人間関係構築力
+summary:
+  look_like:
+    - 人の違いを見抜き、最適な組み合わせ・配役を考える
+  value_when_fit:
+    - チーム編成/ペアリングで生産性と満足度を同時に高める
+  risks_when_misfit:
+    - “前提スキル”扱いで評価が埋もれる、全員最適に時間がかかる
+signals:
+  positive_signs:
+    - メンバーの強み/弱み/相性を具体に言語化
+  negative_signs:
+    - 配置案が意思決定に載らず発言が埋もれる
+  contexts_good:
+    - 組織設計、採用/配属、プロジェクト編成
+  contexts_bad:
+    - 個別最適が全く許されない硬直的環境
+probes:
+  baseline:
+    - "今のチームを並べ替えるなら、最小変更で最大効果の組合せは？"
+  disambiguation:
+    - "共感性との違いは？（感情共鳴 vs 配役設計）"
+  followups:
+    - "半年後の理想編成図は？移行ステップは？"
+management:
+  role_fit_best:
+    - 配役設計、チーム再編、1on1設計支援
+  role_fit_avoid:
+    - 役割裁量がない固定配置
+  do:
+    - 配置案を意思決定会議のアジェンダに常設
+  dont:
+    - “空気読んで”で片付ける
+  guardrails:
+    - 透明な説明責任（基準/例外の明文化）
+  metrics:
+    - 再配置後の生産性/満足度、離職率
+pairing:
+  synergize_with:
+    アレンジ: "情報構造化と配役の相乗"
+  watch_out_with:
+    公平性: "一律基準との葛藤→例外運用の明文化"
+examples:
+  - "2名の入替でリードタイムが30%短縮"
+notes: []
+version: 1
+updated_by: "auto-gen"

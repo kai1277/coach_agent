@@ -1,0 +1,49 @@
+id: STR-developer
+strength: 成長促進 (Developer)
+domain: 人間関係構築力
+summary:
+  look_like:
+    - 他者の可能性を見つけ、小さな成長を喜べる
+  value_when_fit:
+    - 育成/コーチング/オンボードで戦力化を加速
+  risks_when_misfit:
+    - 過保護/過干渉、成果責任が曖昧になる
+signals:
+  positive_signs:
+    - マイルストーンを細かく設定し称賛で伴走
+  negative_signs:
+    - 本人より周囲が頑張る“代理成果”
+  contexts_good:
+    - 新人育成、メンタリング、教育設計
+  contexts_bad:
+    - 育成余地が乏しい専門即戦力のみの現場
+probes:
+  baseline:
+    - "最近、誰のどんな成長を見届けた？どんな支援をした？"
+  disambiguation:
+    - "甘やかしと支援の線引きは？"
+  followups:
+    - "自立を促す評価/基準は？"
+management:
+  role_fit_best:
+    - メンター/教育、オンボード設計、OJT
+  role_fit_avoid:
+    - 完全放任/育成不要の職場
+  do:
+    - 小目標/称賛/振り返りの仕組み化
+  dont:
+    - 育成の全責任を個人に負わせる
+  guardrails:
+    - 自立基準と期日の明文化
+  metrics:
+    - 立上り期間、育成後の自走率
+pairing:
+  synergize_with:
+    包含: "迎え入れ→育てるの連携"
+  watch_out_with:
+    責任感: "抱え込みすぎに注意→役割線引き"
+examples:
+  - "オンボード設計で新人の自走が1ヶ月前倒し"
+notes: []
+version: 1
+updated_by: "auto-gen"
