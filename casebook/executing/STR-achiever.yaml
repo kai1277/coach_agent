@@ -1,0 +1,49 @@
+id: STR-achiever
+strength: 達成欲 (Achiever)
+domain: 実行力
+summary:
+  look_like:
+    - “終わらせること”に快感を覚える。常に動いていたい
+  value_when_fit:
+    - 継続的成果・高い自己管理
+  risks_when_misfit:
+    - 休めず燃え尽き、タスク依存に陥る
+signals:
+  positive_signs:
+    - 毎日ToDoを完了して充実感を語る
+  negative_signs:
+    - 達成感が薄れると一気にモチベ低下
+  contexts_good:
+    - 明確な目標・締切のある環境
+  contexts_bad:
+    - 終わりが見えない曖昧タスク
+probes:
+  baseline:
+    - "最近一番“やり切った”と思えた仕事は？"
+  disambiguation:
+    - "タスクをどう区切っている？"
+  followups:
+    - "休むことへの罪悪感は？"
+management:
+  role_fit_best:
+    - 達成指標が明確なプロジェクト管理
+  role_fit_avoid:
+    - 曖昧な研究テーマや長期探求型業務
+  do:
+    - 目標と期限を明確に、進捗を可視化
+  dont:
+    - 終わりのない依頼
+  guardrails:
+    - 休息と評価を結びつける（例：オフでリセット）
+  metrics:
+    - 完了率、自己申告達成感スコア
+pairing:
+  synergize_with:
+    目標志向: "優先順位設定で走る方向を揃える"
+  watch_out_with:
+    内省: "考え込みすぎで停滞"
+examples:
+  - "ToDo駆動で毎週進捗を安定維持"
+notes: []
+version: 1
+updated_by: "auto-gen"

@@ -1,0 +1,49 @@
+id: STR-focus
+strength: 目標志向 (Focus)
+domain: 実行力
+summary:
+  look_like:
+    - 明確な目的に集中し、寄り道を嫌う
+  value_when_fit:
+    - 優先順位づけと推進力で計画達成に寄与
+  risks_when_misfit:
+    - 柔軟性を欠き、全体最適を見失う
+signals:
+  positive_signs:
+    - 目的と優先順位を短く言語化できる
+  negative_signs:
+    - 目的変更に強い抵抗や苛立ちを見せる
+  contexts_good:
+    - 明確なKPIや締切のある推進タスク
+  contexts_bad:
+    - 方向転換が常態の探索環境
+probes:
+  baseline:
+    - "今のゴールを一言で言うと？"
+  disambiguation:
+    - "手段が目的化していない？切り替え基準は？"
+  followups:
+    - "目的が変わった場合の再計画プロセスは？"
+management:
+  role_fit_best:
+    - 進捗管理、スケジューリング、KPIドリブン運用
+  role_fit_avoid:
+    - 不確実性が高い0→1の早回し探索
+  do:
+    - 目的・期限・優先順位を常に明文化し共有
+  dont:
+    - 目的が曖昧な依頼を丸投げ
+  guardrails:
+    - 変更管理（目的変更の承認フローと通知基準）
+  metrics:
+    - 節目達成率、計画乖離の是正速度
+pairing:
+  synergize_with:
+    達成欲: "目的に向けて粘り強く前進"
+  watch_out_with:
+    着想: "発散に引きずられないようタイムボックス"
+examples:
+  - "OKRを毎週再確認し、四半期の主要目標を前倒し達成"
+notes: []
+version: 1
+updated_by: "auto-gen"

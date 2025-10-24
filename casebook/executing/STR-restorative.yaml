@@ -1,0 +1,49 @@
+id: STR-restorative
+strength: 回復志向 (Restorative)
+domain: 実行力
+summary:
+  look_like:
+    - 問題解決とケアに強い。人や仕組みの“修復”が得意
+  value_when_fit:
+    - トラブル対応・人材育成・オンボーディング支援
+  risks_when_misfit:
+    - “助けたい”が過剰になり、判断を遅らせる
+signals:
+  positive_signs:
+    - トラブル発生時に率先して修復に入る
+  negative_signs:
+    - 問題を抱え込み、疲弊
+  contexts_good:
+    - CS、教育、チーム安定化
+  contexts_bad:
+    - 劇的変革期や非情な意思決定場面
+probes:
+  baseline:
+    - "最近誰か/何かを立て直した経験は？"
+  disambiguation:
+    - "見捨てられないラインはどこ？"
+  followups:
+    - "自己犠牲を防ぐ仕組みは？"
+management:
+  role_fit_best:
+    - トラブルシュート、中間管理職、育成担当
+  role_fit_avoid:
+    - 感情的負荷が高く支援リソースのない現場
+  do:
+    - 決断の補助線とバックアップ担当を置く
+  dont:
+    - “任せきり”で支援なし
+  guardrails:
+    - 介入ルール（期間・範囲・引継ぎ先）
+  metrics:
+    - トラブル解決件数、再発率
+pairing:
+  synergize_with:
+    共感性: "感情理解と支援の相乗"
+  watch_out_with:
+    活発性: "スピード優先で関係断裂→バッファ役配置"
+examples:
+  - "新人フォローで早期離脱を防止"
+notes: []
+version: 1
+updated_by: "auto-gen"
