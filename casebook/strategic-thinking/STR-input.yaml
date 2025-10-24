@@ -1,0 +1,49 @@
+id: STR-input
+strength: 収集心 (Input)
+domain: 戦略的思考力
+summary:
+  look_like:
+    - 情報/モノ/人脈を集め続ける（対象は人それぞれ）
+  value_when_fit:
+    - 資源のリザーブと必要時の即時提示
+  risks_when_misfit:
+    - 収集しっぱなしで整理/活用が追いつかない
+signals:
+  positive_signs:
+    - 参照可能なアーカイブ/ブックマーク/スクラップ
+  negative_signs:
+    - ストックだけ増え、検索性が低い
+  contexts_good:
+    - ナレッジ基盤/リサーチ/カタログ化
+  contexts_bad:
+    - 情報が変化しない閉鎖環境
+probes:
+  baseline:
+    - "最近の良スクラップ3件と用途は？"
+  disambiguation:
+    - "整理と共有の仕組みは？誰が使える？"
+  followups:
+    - "来月、どの棚を“捨てる/まとめる/公開する”？"
+management:
+  role_fit_best:
+    - 情報アーカイブ整備、週次ナレッジ配信
+  role_fit_avoid:
+    - 収集の余地がない固定業務
+  do:
+    - 収集→整理→共有の役割化（責任/期日の設定）
+  dont:
+    - ストックだけ評価
+  guardrails:
+    - メタデータ/検索キーの必須化
+  metrics:
+    - 参照回数、二次利用件数、検索成功率
+pairing:
+  synergize_with:
+    アレンジ: "素材を編集して使える形に"
+  watch_out_with:
+    最上志向: "永遠の“最適化”に注意→期限設定"
+examples:
+  - "社内スクラップ週報で意思決定の材料が迅速化"
+notes: []
+version: 1
+updated_by: "auto-gen"

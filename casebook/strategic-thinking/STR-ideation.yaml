@@ -1,0 +1,49 @@
+id: STR-ideation
+strength: 着想 (Ideation)
+domain: 戦略的思考力
+summary:
+  look_like:
+    - 新しい切り口を連発するアイデアの泉
+  value_when_fit:
+    - 斬新な解法・組合せでブレイクスルー
+  risks_when_misfit:
+    - 言いっぱなし/やりっぱなし、拡散して収束しない
+signals:
+  positive_signs:
+    - 複数案の提示と発想転換の速さ
+  negative_signs:
+    - 実行計画/責任の不在
+  contexts_good:
+    - 発散フェーズ、コンセプト創出
+  contexts_bad:
+    - ルール遵守の運用最適
+probes:
+  baseline:
+    - "この課題に対して“3つ別解”を今出すと？"
+  disambiguation:
+    - "最小コストで検証できる案はどれ？"
+  followups:
+    - "責任と期日を決めるなら誰と何を？"
+management:
+  role_fit_best:
+    - 企画初期、探索スプリントの設計
+  role_fit_avoid:
+    - 厳格な標準運用の維持管理
+  do:
+    - 発散→収束の時間箱と評価軸を明示
+  dont:
+    - アイデアだけで終了
+  guardrails:
+    - 実験計画書（担当/期日/成功基準）
+  metrics:
+    - 発案→検証着手率、採用率
+pairing:
+  synergize_with:
+    責任感: "アイデアを最後まで持ち切る"
+  watch_out_with:
+    慎重さ: "速度差で摩擦→時間箱の合意"
+examples:
+  - "発散2h→収束1hのワークで採用案が明確化"
+notes: []
+version: 1
+updated_by: "auto-gen"

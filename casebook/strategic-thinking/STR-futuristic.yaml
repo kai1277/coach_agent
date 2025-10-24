@@ -1,0 +1,49 @@
+id: STR-futuristic
+strength: 未来志向 (Futuristic)
+domain: 戦略的思考力
+summary:
+  look_like:
+    - 望ましい未来像から逆算。ビジョンを描き周囲を鼓舞
+  value_when_fit:
+    - 長期方向性の明確化、0→1構想、技術シフトの先取り
+  risks_when_misfit:
+    - 現実の制約や足元の運用と断絶
+signals:
+  positive_signs:
+    - 将来像の具体描写と道筋の提示
+  negative_signs:
+    - 現場との乖離感、実装への落とし込み不足
+  contexts_good:
+    - 中長期ロードマップ、プロダクトビジョン
+  contexts_bad:
+    - 目先の火消しや細かな運用最適
+probes:
+  baseline:
+    - "3年後の理想状態を物語で説明すると？"
+  disambiguation:
+    - "その未来へ到る初回の一歩は？"
+  followups:
+    - "逆算で四半期の節目をどう設定する？"
+management:
+  role_fit_best:
+    - ビジョン/ロードマップ責任、R&D探索
+  role_fit_avoid:
+    - タスク駆動の保守運用専任
+  do:
+    - 未来→四半期計画→今週タスクに分解
+  dont:
+    - 絵に描いた餅のまま進行
+  guardrails:
+    - 現実制約の列挙と妥協点の明示
+  metrics:
+    - ロードマップ進捗率、節目達成率
+pairing:
+  synergize_with:
+    目標志向: "未来→目標→遂行へ同期"
+  watch_out_with:
+    規律性: "変化への負荷→変更管理の合意"
+examples:
+  - "未来像から逆算したQごとのマイル石で合意形成"
+notes: []
+version: 1
+updated_by: "auto-gen"
