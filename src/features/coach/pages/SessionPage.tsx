@@ -83,6 +83,36 @@ type SessionDTO = {
 // 種質問の型
 type SeedQuestion = { id: string; theme: string; text: string };
 
+type NextStepAsk = {
+  type: "ASK";
+  question_id?: string;
+  text: string;
+  goal?: string;
+};
+
+type NextStepConclude = {
+  type: "CONCLUDE";
+  summary: string;
+  management: { do: string[]; dont: string[] };
+  next_week_plan?: string[];
+};
+
+type NextStep = NextStepAsk | NextStepConclude;
+
+type LoopFetchNew =
+  | {
+      done: false;
+      asked: number;
+      posterior: any;
+      metadata: { next_step: NextStepAsk };
+    }
+  | {
+      done: true;
+      asked: number;
+      posterior: any;
+      metadata: { next_step: NextStepConclude };
+    };
+
 const LS_KEY = "coach_session_id";
 const ANSWER_LABEL: Record<
   "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO",
@@ -169,6 +199,48 @@ function normalizeSession(raw: any) {
   };
 }
 
+// ===== Loop response helpers =====
+function isOldAsk(x: any): x is Extract<LoopFetch, { done: false }> {
+  return x && x.done === false && "question" in x;
+}
+function isOldDone(x: any): x is Extract<LoopFetch, { done: true }> {
+  return x && x.done === true && "next_steps" in x && !("metadata" in x);
+}
+function isNewAsk(x: any): x is Extract<LoopFetchNew, { done: false }> {
+  return x && x.done === false && x.metadata?.next_step?.type === "ASK";
+}
+function isNewDone(x: any): x is Extract<LoopFetchNew, { done: true }> {
+  return x && x.done === true && x.metadata?.next_step?.type === "CONCLUDE";
+}
+
+/** 共通化：現在の質問ID/本文を取得（なければ null） */
+function getCurrentQuestion(
+  ls: LoopFetch | LoopFetchNew | null
+): { id?: string; text?: string } | null {
+  if (!ls) return null;
+  if (isOldAsk(ls) && ls.question)
+    return { id: ls.question.id, text: ls.question.text };
+  if (isNewAsk(ls))
+    return {
+      id: ls.metadata.next_step.question_id,
+      text: ls.metadata.next_step.text,
+    };
+  return null;
+}
+
+/** 共通化：進捗 asked / max を取得（max は推定も可） */
+function getProgress(
+  ls: LoopFetch | LoopFetchNew | null,
+  fallbackMax?: number
+) {
+  if (!ls) return { asked: 0, max: fallbackMax ?? 0 };
+  if (isOldAsk(ls)) return { asked: ls.progress.asked, max: ls.progress.max };
+  if (isOldDone(ls)) return { asked: ls.asked, max: ls.max };
+  if ("asked" in ls)
+    return { asked: (ls as any).asked ?? 0, max: fallbackMax ?? 0 };
+  return { asked: 0, max: fallbackMax ?? 0 };
+}
+
 export default function SessionPage() {
   const navigate = useNavigate();
 
@@ -203,7 +275,9 @@ export default function SessionPage() {
   const [loopStarted, setLoopStarted] = useState(false);
   const [loopBusy, setLoopBusy] = useState(false);
   const [loopError, setLoopError] = useState<string | null>(null);
-  const [loopState, setLoopState] = useState<LoopFetch | null>(null);
+  const [loopState, setLoopState] = useState<(LoopFetch | LoopFetchNew) | null>(
+    null
+  );
 
   // URL パラメータから復元
   const [sp, setSp] = useSearchParams();
@@ -421,13 +495,10 @@ export default function SessionPage() {
   // キーショートカット（1..5で回答）
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (
-        !loopState ||
-        !("done" in loopState) ||
-        loopState.done ||
-        !loopState.question
-      )
-        return;
+      if (!loopState || !("done" in loopState) || loopState.done) return;
+      const q = getCurrentQuestion(loopState);
+      if (!q?.id) return;
+
       const map: Record<
         string,
         "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO"
@@ -441,7 +512,7 @@ export default function SessionPage() {
       const a = map[e.key];
       if (a) {
         e.preventDefault();
-        answer(loopState.question.id, a);
+        answer(q.id, a);
       }
     };
     window.addEventListener("keydown", handler);
@@ -819,119 +890,124 @@ export default function SessionPage() {
           {loopStarted &&
             loopState &&
             "done" in loopState &&
-            loopState.done === false && (
-              <div className="space-y-3" aria-busy={loopBusy}>
-                <div className="text-sm text-gray-600">
-                  進捗: {loopState.progress.asked}/{loopState.progress.max}
-                </div>
+            loopState.done === false &&
+            (() => {
+              const prog = getProgress(
+                loopState,
+                safeSession.loop?.maxQuestions ?? 0
+              );
+              const curQ = getCurrentQuestion(loopState);
 
-                <div className="p-3 rounded border">
-                  <div className="font-medium mb-2">
-                    Q:{" "}
-                    {loopState.question
-                      ? loopState.question.text
-                      : "（取得中）"}
+              return (
+                <div className="space-y-3" aria-busy={loopBusy}>
+                  <div className="text-sm text-gray-600">
+                    進捗: {prog.asked}/{prog.max || "—"}
                   </div>
-                  <div className="text-xs text-gray-500 mb-1">
-                    ※ キー操作: 1=はい / 2=たぶんはい / 3=わからない /
-                    4=たぶんいいえ / 5=いいえ
+
+                  <div className="p-3 rounded border">
+                    <div className="font-medium mb-2">
+                      Q: {curQ?.text || "（取得中）"}
+                    </div>
+                    <div className="text-xs text-gray-500 mb-1">
+                      ※ キー操作: 1=はい / 2=たぶんはい / 3=わからない /
+                      4=たぶんいいえ / 5=いいえ
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          { k: "YES", label: "はい" },
+                          { k: "PROB_YES", label: "たぶんはい" },
+                          { k: "UNKNOWN", label: "わからない" },
+                          { k: "PROB_NO", label: "たぶんいいえ" },
+                          { k: "NO", label: "いいえ" },
+                        ] as const
+                      ).map((opt, idx) => (
+                        <button
+                          key={opt.k}
+                          ref={idx === 0 ? firstAnswerBtnRef : undefined}
+                          disabled={loopBusy || !curQ?.id}
+                          className="rounded border px-3 py-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-black"
+                          onClick={() =>
+                            curQ?.id && answer(curQ.id, opt.k as any)
+                          }
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(
-                      [
-                        { k: "YES", label: "はい" },
-                        { k: "PROB_YES", label: "たぶんはい" },
-                        { k: "UNKNOWN", label: "わからない" },
-                        { k: "PROB_NO", label: "たぶんいいえ" },
-                        { k: "NO", label: "いいえ" },
-                      ] as const
-                    ).map((opt, idx) => (
-                      <button
-                        key={opt.k}
-                        ref={idx === 0 ? firstAnswerBtnRef : undefined}
-                        disabled={loopBusy || !loopState.question}
-                        className="rounded border px-3 py-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-black"
-                        onClick={() =>
-                          loopState.question &&
-                          answer(loopState.question.id, opt.k as any)
-                        }
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+
+                  {/* === 質問に対するワンクリック評価（既存そのまま） === */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm text-gray-600">
+                      この質問は役に立ちましたか？
+                    </span>
+                    <button
+                      className="px-2 py-1 rounded border disabled:opacity-50"
+                      disabled={!lastTraceId || fbBusy}
+                      onClick={() => sendFeedback("up")}
+                      title="役に立った"
+                    >
+                      👍 良い
+                    </button>
+                    <button
+                      className="px-2 py-1 rounded border disabled:opacity-50"
+                      disabled={!lastTraceId || fbBusy}
+                      onClick={() => sendFeedback("down")}
+                      title="役に立たない／改善してほしい"
+                    >
+                      👎 微妙
+                    </button>
                   </div>
-                </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      className="flex-1 rounded border p-2 text-sm"
+                      placeholder="任意メモ（なぜ良い/悪い？改善案など）"
+                      value={fbNote}
+                      onChange={(e) => setFbNote(e.target.value)}
+                      disabled={!lastTraceId || fbBusy}
+                    />
+                    <button
+                      className="px-3 py-1 rounded border text-sm disabled:opacity-50"
+                      disabled={!lastTraceId || fbBusy || !fbNote.trim()}
+                      onClick={() => sendFeedback("down")}
+                      title="メモ付きで送信（改善要望など）"
+                    >
+                      送信
+                    </button>
+                  </div>
 
-                {/* === 質問に対するワンクリック評価 === */}
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-sm text-gray-600">
-                    この質問は役に立ちましたか？
-                  </span>
-                  <button
-                    className="px-2 py-1 rounded border disabled:opacity-50"
-                    disabled={!lastTraceId || fbBusy}
-                    onClick={() => sendFeedback("up")}
-                    title="役に立った"
-                  >
-                    👍 良い
-                  </button>
-                  <button
-                    className="px-2 py-1 rounded border disabled:opacity-50"
-                    disabled={!lastTraceId || fbBusy}
-                    onClick={() => sendFeedback("down")}
-                    title="役に立たない／改善してほしい"
-                  >
-                    👎 微妙
-                  </button>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    className="flex-1 rounded border p-2 text-sm"
-                    placeholder="任意メモ（なぜ良い/悪い？改善案など）"
-                    value={fbNote}
-                    onChange={(e) => setFbNote(e.target.value)}
-                    disabled={!lastTraceId || fbBusy}
-                  />
-                  <button
-                    className="px-3 py-1 rounded border text-sm disabled:opacity-50"
-                    disabled={!lastTraceId || fbBusy || !fbNote.trim()}
-                    onClick={() => sendFeedback("down")}
-                    title="メモ付きで送信（改善要望など）"
-                  >
-                    送信
-                  </button>
-                </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="rounded border px-3 py-2"
+                      disabled={loopBusy}
+                      onClick={fetchNext}
+                    >
+                      次の質問を取得
+                    </button>
+                    <button
+                      className="rounded border px-3 py-2"
+                      disabled={loopBusy}
+                      onClick={undo}
+                    >
+                      直前の回答を取り消す
+                    </button>
+                    <button
+                      className="rounded border px-3 py-1"
+                      onClick={() =>
+                        qc.invalidateQueries({ queryKey: ["turns", sessionId] })
+                      }
+                    >
+                      ログの再読み込み
+                    </button>
+                  </div>
 
-                <div className="flex gap-2">
-                  <button
-                    className="rounded border px-3 py-2"
-                    disabled={loopBusy}
-                    onClick={fetchNext}
-                  >
-                    次の質問を取得
-                  </button>
-                  <button
-                    className="rounded border px-3 py-2"
-                    disabled={loopBusy}
-                    onClick={undo}
-                  >
-                    直前の回答を取り消す
-                  </button>
-                  <button
-                    className="rounded border px-3 py-1"
-                    onClick={() =>
-                      qc.invalidateQueries({ queryKey: ["turns", sessionId] })
-                    }
-                  >
-                    ログの再読み込み
-                  </button>
+                  {loopError && (
+                    <div className="text-sm text-red-600">{loopError}</div>
+                  )}
                 </div>
-
-                {loopError && (
-                  <div className="text-sm text-red-600">{loopError}</div>
-                )}
-              </div>
-            )}
+              );
+            })()}
 
           {loopStarted &&
             loopState &&
@@ -944,67 +1020,123 @@ export default function SessionPage() {
                   </div>
                 )}
 
-                {loopState.persona_statement && (
-                  <section className="space-y-1">
-                    <div className="font-medium">あなたはこういう人です！</div>
-                    <div className="rounded border p-3 whitespace-pre-wrap">
-                      {loopState.persona_statement}
+                {/* 新形式（CONCLUDE）：metadata.next_step を優先表示 */}
+                {isNewDone(loopState) ? (
+                  <>
+                    <section className="space-y-1">
+                      <div className="font-medium">
+                        あなたはこういう人です！
+                      </div>
+                      <div className="rounded border p-3 whitespace-pre-wrap">
+                        {loopState.metadata.next_step.summary}
+                      </div>
+                    </section>
+
+                    <div>
+                      <div className="font-medium">あなたへの「次の一歩」</div>
+                      <ul className="pl-0">
+                        {(loopState.metadata.next_step.next_week_plan?.length
+                          ? loopState.metadata.next_step.next_week_plan
+                          : loopState.metadata.next_step.management?.do || []
+                        ).map((s, i) => (
+                          <li key={i} className="list-none">
+                            <button
+                              className="underline rounded px-1 py-0.5 hover:bg-gray-100"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(s).then(
+                                  () =>
+                                    showToast("コピーしました", {
+                                      type: "success",
+                                    }),
+                                  () =>
+                                    showToast("コピーできませんでした", {
+                                      type: "error",
+                                    })
+                                );
+                              }}
+                            >
+                              {s}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  </section>
+
+                    {loopState.metadata.next_step.management?.dont?.length ? (
+                      <div>
+                        <div className="font-medium">避けたいこと</div>
+                        <ul className="list-disc pl-6 text-sm">
+                          {loopState.metadata.next_step.management.dont.map(
+                            (d, i) => (
+                              <li key={i}>{d}</li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  // 旧形式（互換）：persona_statement / next_steps
+                  <>
+                    {(loopState as any).persona_statement && (
+                      <section className="space-y-1">
+                        <div className="font-medium">
+                          あなたはこういう人です！
+                        </div>
+                        <div className="rounded border p-3 whitespace-pre-wrap">
+                          {(loopState as any).persona_statement}
+                        </div>
+                      </section>
+                    )}
+
+                    <div>
+                      <div className="font-medium">あなたへの「次の一歩」</div>
+                      <ul className="pl-0">
+                        {loopState.next_steps.map((s, i) => (
+                          <li key={i} className="list-none">
+                            <button
+                              className="underline rounded px-1 py-0.5 hover:bg-gray-100"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(s).then(
+                                  () =>
+                                    showToast("コピーしました", {
+                                      type: "success",
+                                    }),
+                                  () =>
+                                    showToast("コピーできませんでした", {
+                                      type: "error",
+                                    })
+                                );
+                              }}
+                            >
+                              {s}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
                 )}
 
-                <div>
-                  <div className="font-medium">あなたへの「次の一歩」</div>
-                  <ul className="pl-0">
-                    {loopState.next_steps.map((s, i) => (
-                      <li key={i} className="list-none">
-                        <button
-                          className="underline rounded px-1 py-0.5 hover:bg-gray-100"
-                          onClick={() => {
-                            navigator.clipboard?.writeText(s).then(
-                              () =>
-                                showToast("コピーしました", {
-                                  type: "success",
-                                }),
-                              () =>
-                                showToast("コピーできませんでした", {
-                                  type: "error",
-                                })
-                            );
-                          }}
-                        >
-                          {s}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {loopState.evidence?.length > 0 && (
+                {/* 旧形式の根拠表示（互換表示） */}
+                {(loopState as any).evidence?.length > 0 && (
                   <div className="space-y-1">
                     <div className="font-medium">
                       根拠の内訳（影響が大きかった回答）
                     </div>
                     <ul className="list-disc pl-6 text-sm">
-                      {loopState.evidence.map((e, i) => (
-                        <li key={i}>
-                          <span className="font-medium">Q:</span> {e.text} ／
-                          <span className="font-medium">A:</span>{" "}
-                          {
-                            {
-                              YES: "はい",
-                              PROB_YES: "たぶんはい",
-                              UNKNOWN: "わからない",
-                              PROB_NO: "たぶんいいえ",
-                              NO: "いいえ",
-                            }[e.answer]
-                          }{" "}
-                          ／
-                          <span className="text-gray-600">
-                            確信度寄与: {(e.delta * 100).toFixed(1)}%
-                          </span>
-                        </li>
-                      ))}
+                      {(loopState as any).evidence.map(
+                        (e: EvidenceItem, i: number) => (
+                          <li key={i}>
+                            <span className="font-medium">Q:</span> {e.text} ／
+                            <span className="font-medium">A:</span>{" "}
+                            {ANSWER_LABEL[e.answer]} ／
+                            <span className="text-gray-600">
+                              確信度寄与: {(e.delta * 100).toFixed(1)}%
+                            </span>
+                          </li>
+                        )
+                      )}
                     </ul>
                   </div>
                 )}
