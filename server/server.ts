@@ -239,6 +239,73 @@ async function saveLoopState(sessionId: string, updater: (meta: any) => any) {
   return next;
 }
 
+/* ========== Embedding helper ========== */
+async function embedText(text: string): Promise<number[]> {
+  const emb = await openai.embeddings.create({
+    model: OPENAI_EMBED_MODEL,
+    input: text,
+  });
+  return emb.data[0].embedding as number[];
+}
+
+/* ========== RAG: 検索ユーティリティ ========== */
+async function ragCasebook(strengths_top5: string[] = [], basic: Record<string, any> = {}, k = 5) {
+  const query = [
+    `Top5:${strengths_top5.join(',')}`,
+    `Basic:${JSON.stringify(basic)}`,
+  ].join('\n');
+  const vec = await embedText(query);
+  const { data, error } = await supabase.rpc('match_casebook_cards', {
+    query_embedding: vec as any,
+    match_count: k
+  });
+  if (error) { console.warn('[ragCasebook] ', error.message); return []; }
+  return data ?? [];
+}
+
+async function ragQuestionTemplates(context: {
+  hypotheses?: string[];
+  last_answers?: Array<{ q: string; a: string }>;
+}, k = 5) {
+  const text = [
+    'Hypotheses:',
+    ...(context.hypotheses ?? []),
+    '',
+    'Answers:',
+    ...((context.last_answers ?? []).map(v => `Q:${v.q} A:${v.a}`)),
+  ].join('\n');
+  const vec = await embedText(text);
+  const { data, error } = await supabase.rpc('match_question_templates', {
+    query_embedding: vec as any,
+    match_count: k
+  });
+  if (error) { console.warn('[ragQuestionTemplates] ', error.message); return []; }
+  return data ?? [];
+}
+
+/* ========== Posterior のダミー更新（P1は簡易でOK） ========== */
+function updatePosterior(prev: Record<string, number> | null, answer: string) {
+  // まだ本格的なクラス分類器がないため、暫定：YES/NO でバランス微調整
+  const base = prev ?? {
+    TYPE_STRATEGY: 0.2,
+    TYPE_EMPATHY: 0.2,
+    TYPE_EXECUTION: 0.2,
+    TYPE_ANALYTICAL: 0.2,
+    TYPE_STABILITY: 0.2,
+  };
+  const delta = answer === 'YES' ? 0.03
+              : answer === 'PROB_YES' ? 0.015
+              : answer === 'PROB_NO' ? -0.015
+              : answer === 'NO' ? -0.03 : 0;
+  // 実行タイプに寄せるなどの簡易ルール（本番は Classifier LLM に置換）
+  base.TYPE_EXECUTION = Math.max(0, Math.min(1, base.TYPE_EXECUTION + delta));
+  // 正規化
+  const sum = Object.values(base).reduce((a,b)=>a+b,0) || 1;
+  const norm: Record<string, number> = {};
+  (Object.keys(base) as Array<keyof typeof base>).forEach(k => (norm[k] = base[k]/sum));
+  return norm;
+}
+
 /* --------------------------- LLM Question Generator ------------------------- */
 
 type Question = { id: string; theme: string; text: string };
@@ -502,6 +569,102 @@ async function genPersonaAndNextSteps(opts: {
   });
 
   return { persona_statement, next_steps };
+}
+
+/* ========== Profiler ========== */
+async function runProfiler(opts: {
+  strengths_top5?: string[];
+  demographics?: Record<string, any>;
+}) {
+  const { strengths_top5 = [], demographics = {} } = opts;
+  const cases = await ragCasebook(strengths_top5, demographics, 4);
+  const context = cases.map((c: any, i: number) =>
+    `CARD${i+1} ${c.title}\nHypo:${JSON.stringify(c.hypotheses)}\nProbes:${JSON.stringify(c.probes)}`
+  ).join('\n---\n');
+
+  const system = `あなたはプロファイラーです。入力の Top5 と基本情報、CONTEXT を参考に、日本語で「仮説」を3件出力します。JSONのみ。`;
+  const user = `Top5: ${JSON.stringify(strengths_top5)}
+Demographics: ${JSON.stringify(demographics)}
+[CONTEXT]
+${context || '(なし)'}
+出力: {"hypotheses":["...","...","..."]}`;
+
+  const r = await openai.chat.completions.create({
+    model: OPENAI_MODEL, temperature: 0.2,
+    messages: [{ role:'system', content: system }, { role:'user', content: user }]
+  });
+  const parsed = extractJson(r.choices?.[0]?.message?.content ?? '{}') ?? {};
+  const hypotheses: string[] = Array.isArray(parsed.hypotheses) ? parsed.hypotheses.slice(0,3) : [];
+  return { hypotheses, rag_cases: cases };
+}
+
+/* ========== Interviewer（次の良問） ========== */
+async function runInterviewer(opts: {
+  hypotheses?: string[];
+  qa_pairs?: Array<{q:string;a:string}>;
+}) {
+  const { hypotheses = [], qa_pairs = [] } = opts;
+  const qtemps = await ragQuestionTemplates({ hypotheses, last_answers: qa_pairs }, 4);
+  const system = `あなたはインタビュアー。CONTEXT（良問テンプレ候補）を参考に、"次に聞くべき最良の1問" を日本語で作成。JSONのみ。`;
+  const ctx = qtemps.map((t:any,i:number)=>`T${i+1}: ${t.template} | goal:${t.goal} | followups:${JSON.stringify(t.followups)}`).join('\n');
+  const user = `仮説: ${JSON.stringify(hypotheses)}
+Q/A履歴(抜粋): ${JSON.stringify(qa_pairs)}
+[CONTEXT]
+${ctx || '(なし)'}
+出力: {"question":{"text":"...", "goal":"...", "template_id":"Q-... (あれば)"}}`;
+
+  const r = await openai.chat.completions.create({
+    model: OPENAI_MODEL, temperature: 0.3,
+    messages: [{ role:'system', content: system }, { role:'user', content: user }]
+  });
+  const parsed = extractJson(r.choices?.[0]?.message?.content ?? '{}') ?? {};
+  const q = parsed?.question ?? {};
+  return {
+    question: {
+      id: q?.template_id ?? `Q_${Date.now()}`,
+      text: String(q?.text ?? '').trim() || '最近の仕事で一番うまくいったことは？',
+      goal: String(q?.goal ?? ''),
+    }
+  };
+}
+
+/* ========== Manager（結論） ========== */
+async function runManager(opts: {
+  strengths_top5?: string[];
+  demographics?: Record<string, any>;
+  qa_pairs: Array<{q:string;a:string}>;
+}) {
+  const { strengths_top5 = [], demographics = {}, qa_pairs } = opts;
+
+  const system = `あなたはマネジメント設計者。入力を踏まえて
+- "あなたはこういう人です！"（断定文で3〜5文）
+- マネジメント方針（DO / DON'T 各3つ以内）
+- 来週の具体アクション（1〜3）
+を日本語JSONで返す。JSON以外禁止。`;
+
+  const user = `Top5: ${JSON.stringify(strengths_top5)}
+Demographics: ${JSON.stringify(demographics)}
+Q/A: ${JSON.stringify(qa_pairs)}
+出力:
+{
+  "you_are": "...",
+  "management": { "do": ["..."], "dont": ["..."] },
+  "next_week_plan": ["..."]
+}`;
+
+  const r = await openai.chat.completions.create({
+    model: OPENAI_MODEL, temperature: 0.2,
+    messages: [{ role:'system', content: system }, { role:'user', content: user }]
+  });
+  const o = extractJson(r.choices?.[0]?.message?.content ?? '{}') ?? {};
+  return {
+    you_are: String(o.you_are ?? '').trim(),
+    management: {
+      do: Array.isArray(o?.management?.do) ? o.management.do.slice(0,3) : [],
+      dont: Array.isArray(o?.management?.dont) ? o.management.dont.slice(0,3) : [],
+    },
+    next_week_plan: Array.isArray(o?.next_week_plan) ? o.next_week_plan.slice(0,3) : []
+  };
 }
 
 /* --------------------------- Loop State (in-memory) ------------------------- */
@@ -795,19 +958,27 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     const { id } = req.params;
     const st = loopOf(id);
 
-    // 完了条件（そのまま）
+    // ----- 完了条件 -----
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
-      const row = await supabase.from('sessions').select('metadata, summary').eq('id', id).single();
+      const row = await supabase
+        .from('sessions')
+        .select('metadata, summary')
+        .eq('id', id)
+        .single();
 
       const meta = row.data?.metadata ?? {};
+      // ★ 未定義の fetchAnswerHistory ではなく、既存の fetchQAPairs を使う
       const answers = await fetchAnswerHistory(id);
 
+      // ★ まとめ生成（あなたはこういう人です！ + 次の一歩）
       const out = await genPersonaAndNextSteps({
         strengths_top5: meta?.strengths_top5 ?? [],
         demographics: meta?.demographics ?? {},
-        answers,
+        // ここは呼び出し先の期待に合わせて渡す
+        answers,  // ← 関数の引数が qa_pairs を期待する実装なら名前を変えてください
       });
 
+      // セッションへ永続化
       await supabase
         .from('sessions')
         .update({
@@ -819,18 +990,25 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       return res.status(200).json({
         done: true,
         top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
-        next_steps: [],
+        // ★ 生成した next_steps を返す（空配列のままにしない）
+        next_steps: out.next_steps ?? [],
         asked: st.asked,
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
         evidence: [],
-        persona_statement: out.persona_statement,
+        // ★ フロントで表示する断定文
+        persona_statement: out.persona_statement ?? '',
         trace_id: null,
       });
     }
 
-    // セッションのメタを取得し、asked 巻き上げを反映
-    const row = await supabase.from('sessions').select('metadata, summary').eq('id', id).single();
+    // ----- 進行中：メタ取得＆ asked 巻き上げ -----
+    const row = await supabase
+      .from('sessions')
+      .select('metadata, summary')
+      .eq('id', id)
+      .single();
+
     const meta = row.data?.metadata ?? {};
     const prevAsked = meta?.loop?.progressAsked;
     if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
@@ -839,19 +1017,19 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 
     let q: { id: string; text: string; theme?: string } | null = null;
 
-    // ★ 第1問だけ、seed_questions を優先的に消費して使う
+    // ----- 第1問目は seed_questions を優先 -----
     if (st.asked === 0) {
       const seeds: any[] = Array.isArray(meta.seed_questions) ? meta.seed_questions : [];
       const first = seeds[0];
       if (first && typeof first.text === 'string' && first.text.trim()) {
         q = { id: first.id ?? `QSEED_${Date.now()}`, text: first.text.trim(), theme: first.theme ?? '' };
-        // 使った分を取り除いて永続化（任意・履歴を残したいならフラグにする）
+        // 使った分を取り除いて永続化
         const newMeta = { ...meta, seed_questions: seeds.slice(1) };
         await supabase.from('sessions').update({ metadata: newMeta }).eq('id', id);
       }
     }
 
-    // 種が無い or 第2問以降は LLM で1問生成
+    // ----- 種が無い or 第2問以降は LLM で生成 -----
     if (!q) {
       const t0 = Date.now();
       const qs = await genQuestionsLLM({
@@ -861,7 +1039,6 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
         avoid_texts: st.recentTexts,
       });
       q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
-
       await recordTrace({
         session_id: id,
         model: OPENAI_MODEL,
@@ -874,6 +1051,15 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     // recentTexts に積む
     if (q?.text) {
       st.recentTexts = Array.from(new Set([q.text, ...st.recentTexts])).slice(0, 10);
+    }
+
+    // ★★★ 初手だけ assistant/question を turns に保存（ここが超重要）★★★
+    if (st.asked === 0 && q?.id && q?.text) {
+      await supabase.from('turns').insert({
+        session_id: id,
+        role: 'assistant',
+        content: { type: 'question', question_id: q.id, text: q.text },
+      });
     }
 
     return res.status(200).json({
@@ -899,100 +1085,126 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 app.post('/api/sessions/:id/answers', async (req, res) => {
   try {
     const { id } = req.params;
-    const st = loopOf(id);
+    const { questionId, answer } = req.body ?? {};
+    if (!questionId) return sendErr(res, 400, 'questionId is required');
 
-    // 1) まず回答を保存
+    // 1) 回答を保存
     await supabase.from('turns').insert({
       session_id: id,
       role: 'user',
-      content: { type: 'answer', question_id: req.body?.questionId, answer: req.body?.answer },
+      content: { type: 'answer', question_id: questionId, answer },
     });
 
-    // 2) 進捗を更新
-    st.asked += 1;
-    await supabase.from('sessions').update({
-      metadata: {
-        ...( (await supabase.from('sessions').select('metadata').eq('id', id).single()).data?.metadata ?? {} ),
-        loop: { ...st.loop, progressAsked: st.asked },
-      }
-    }).eq('id', id);
+    // 2) 確率（暫定）更新を turn にも保存
+    const row = await supabase.from('sessions').select('asked_count, max_questions, metadata').eq('id', id).single();
+    if (row.error || !row.data) return sendErr(res, 404, 'session not found');
 
-    // 3) 完了判定は「回答保存後」に行う
-    if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
-      // 3-1) 次の一歩を生成
-      const row = await supabase.from('sessions').select('metadata, summary').eq('id', id).single();
-      const meta = row.data?.metadata ?? {};
-      const answers = await fetchAnswerHistory(id);
-      
+    let asked_count = Number(row.data.asked_count ?? 0) + 1;
+    const max_questions = Number(row.data.max_questions ?? 8);
+    const meta = (row.data.metadata ?? {}) as any;
+    const prevPost = meta?.posterior ?? null;
+    const newPosterior = updatePosterior(prevPost, String(answer));
+
+    // 3) 収束判定
+    if (asked_count >= max_questions) {
+      const rawPairs = await fetchQAPairs(id);
+
+      // A) genPersonaAndNextSteps 用（answers 形式）
+      const answersForPersona = rawPairs.map(p => ({
+        question_id: p.question_id,
+        answer: String(p.answer),
+      }));
+
+      // B) runManager 用（{q,a}[] 形式）
+      const qa_pairs = rawPairs.map(p => ({
+        q: p.question_text,
+        a: String(p.answer),
+      }));
+
       const out = await genPersonaAndNextSteps({
         strengths_top5: meta?.strengths_top5 ?? [],
         demographics: meta?.demographics ?? {},
-        answers,
+        answers: answersForPersona,    // ← 正しい型名＆構造
       });
 
-      await supabase
-        .from('sessions')
-        .update({
-          summary: out.persona_statement,
-          metadata: { ...meta, next_steps: out.next_steps },
-        })
+      const concl = await runManager({
+        strengths_top5: meta?.strengths_top5 ?? [],
+        demographics: meta?.demographics ?? {},
+        qa_pairs,                      // ← {q, a}[]
+      });
+
+      const newMeta = {
+        ...meta,
+        posterior: newPosterior,
+        next_step: {
+          type: 'CONCLUDE',
+          summary: concl.you_are,
+          management: concl.management,
+          next_week_plan: concl.next_week_plan,
+        }
+      };
+
+      await supabase.from('sessions')
+        .update({ asked_count, metadata: newMeta, status: 'concluded' })
         .eq('id', id);
+
+      await supabase.from('conclusions').upsert({
+        session_id: id,
+        you_are: concl.you_are,
+        management_do: concl.management.do,
+        management_dont: concl.management.dont,
+        next_week_plan: concl.next_week_plan,
+      });
 
       return res.status(200).json({
         done: true,
-        next_steps: out.next_steps,
-        asked: st.asked,
-        max: st.loop.maxQuestions,
-        posterior: neutralPosterior(),
-        evidence: [],       // ここは必要なら将来、寄与ロジックで埋める
-        persona_statement: out.persona_statement,
-        trace_id: null,
+        asked: asked_count,
+        posterior: newPosterior,
+        metadata: { next_step: newMeta.next_step }
       });
     }
 
-    // 4) 継続の場合は次の質問を作る
-    const row = await supabase.from('sessions').select('metadata').eq('id', id).single();
-    const meta = row.data?.metadata ?? {};
-
-    const t0 = Date.now();
-    const qs = await genQuestionsLLM({
-      strengths_top5: meta?.strengths_top5 ?? [],
-      demographics: meta?.demographics ?? {},
-      n: 1,
-      avoid_texts: st.recentTexts,
+    // 4) 継続：Interviewer で次の質問
+    const rawPairsForInterviewer = await fetchQAPairs(id);
+    const qa_pairs = rawPairsForInterviewer.slice(-10).map(p => ({
+      q: p.question_text,
+      a: String(p.answer),
+    }));
+    const inter = await runInterviewer({
+      hypotheses: meta?.hypotheses ?? [],
+      qa_pairs,  
     });
-    const q = qs[0] ?? { id: `QF_${Date.now()}`, text: '直近の小さな成功はありますか？', theme: '' };
 
-    // turns に質問を保存（継続時も入れる）
+    const next_step = {
+      type: 'ASK',
+      question_id: inter.question.id,
+      text: inter.question.text,
+      goal: inter.question.goal
+    };
+
+    const newMeta = { ...meta, posterior: newPosterior, next_step };
+    await supabase.from('sessions')
+      .update({ asked_count, metadata: newMeta })
+      .eq('id', id);
+
+    // assistant側の「次の質問」も turns に保存（任意）
     await supabase.from('turns').insert({
       session_id: id,
       role: 'assistant',
-      content: { type: 'question', question_id: q.id, text: q.text },
+      content: { type: 'question', question_id: inter.question.id, text: inter.question.text },
+      question_id: inter.question.id,
+      posterior: newPosterior
     });
-
-    const traceId = await recordTrace({
-      session_id: id,
-      model: OPENAI_MODEL,
-      prompt: '(answers -> generate next)',
-      completion: JSON.stringify(q),
-      latency_ms: Date.now() - t0,
-    });
-
-    if (q?.text) {
-      st.recentTexts = Array.from(new Set([q.text, ...st.recentTexts])).slice(0, 10);
-    }
 
     return res.status(200).json({
       done: false,
-      question: { id: q.id, text: q.text },
-      progress: { asked: st.asked, max: st.loop.maxQuestions },
-      hint: { topLabel: '', confidence: 0 },
-      posterior: neutralPosterior(),
-      trace_id: traceId || null,
+      asked: asked_count,
+      posterior: newPosterior,
+      metadata: { next_step }
     });
   } catch (e) {
     console.error('POST /answers error', e);
-    return res.status(500).json({ message: 'internal error' });
+    return res.status(500).json({ error: 'internal error' });
   }
 });
 
