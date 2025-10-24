@@ -1,0 +1,32 @@
+id: STR-communication
+strength: コミュニケーション (Communication)
+domain: 影響力
+summary:
+  look_like:
+    - 話術が軽やかで場を動かす
+  value_when_fit:
+    - 発信・調整・広報に強み
+  risks_when_misfit:
+    - 失言リスク、軽さの誤解
+signals:
+  positive_signs: ["場の空気をつかむ発言"]
+  negative_signs: ["発言ミスで信用失墜"]
+  contexts_good: ["ファシリテーション、社外発信"]
+  contexts_bad: ["正確性重視の技術説明"]
+probes:
+  baseline: ["どんな場で最も話しやすい？"]
+  disambiguation: ["Wooとの違いは？"]
+  followups: ["発言前チェックの工夫は？"]
+management:
+  role_fit_best: ["広報・発信業務"]
+  role_fit_avoid: ["厳密性第一の分野"]
+  do: ["得意間合いで登壇機会を設計"]
+  dont: ["“話せる人”として丸投げ"]
+  guardrails: ["レビュー導線を設定"]
+  metrics: ["発信数とエラー率"]
+pairing:
+  synergize_with: { "アレンジ": "情報編集と話術の連携" }
+  watch_out_with: { "分析思考": "根拠不足を補完" }
+examples: ["社内イベントMCでチームを鼓舞"]
+version: 1
+updated_by: "auto-gen"

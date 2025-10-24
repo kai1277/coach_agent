@@ -1,0 +1,29 @@
+id: STR-maximizer
+strength: 最上志向 (Maximizer)
+domain: 影響力
+summary:
+  look_like: ["自己基準の最高を求める"]
+  value_when_fit: ["品質の底上げ、こだわりの成果"]
+  risks_when_misfit: ["撤退判断が遅れる"]
+signals:
+  positive_signs: ["基準を定義し改善を継続"]
+  negative_signs: ["“完璧”を追い停滞"]
+  contexts_good: ["品質改善、ブランド設計"]
+  contexts_bad: ["早回しPoC"]
+probes:
+  baseline: ["納得ラインは？"]
+  disambiguation: ["競争性との差は？"]
+  followups: ["中断時の合意点は？"]
+management:
+  role_fit_best: ["1→10段階での品質磨き"]
+  role_fit_avoid: ["0→1実験"]
+  do: ["出口基準を事前合意"]
+  dont: ["無期限改善"]
+  guardrails: ["完了条件を明記"]
+  metrics: ["品質KPI, リワーク率"]
+pairing:
+  synergize_with: { "規律性": "標準化と品質向上" }
+  watch_out_with: { "活発性": "速度衝突に注意" }
+examples: ["UX改善に粘り強く貢献"]
+version: 1
+updated_by: "auto-gen"

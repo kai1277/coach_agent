@@ -1,0 +1,29 @@
+id: STR-selfassurance
+strength: 自己確信 (Self-Assurance)
+domain: 影響力
+summary:
+  look_like: ["自分の判断軸に強い確信を持つ"]
+  value_when_fit: ["ブレない方針決定、覚悟のある行動"]
+  risks_when_misfit: ["他者意見を排除"]
+signals:
+  positive_signs: ["方針に一貫性"]
+  negative_signs: ["独善的な意思決定"]
+  contexts_good: ["独立裁量職、経営判断"]
+  contexts_bad: ["合議制組織"]
+probes:
+  baseline: ["自分の判断軸は何？"]
+  disambiguation: ["指令性との違い：意思 vs 確信？"]
+  followups: ["他者意見をどう取り込む？"]
+management:
+  role_fit_best: ["方針策定、専門判断"]
+  role_fit_avoid: ["頻繁な承認が必要な職務"]
+  do: ["大枠の目的整合だけ明確化"]
+  dont: ["細かい指示介入"]
+  guardrails: ["整合確認の定例"]
+  metrics: ["意思決定速度"]
+pairing:
+  synergize_with: { "戦略性": "方針を論理化" }
+  watch_out_with: { "共感性": "感情理解の欠如に注意" }
+examples: ["新方針を貫徹しチームを導く"]
+version: 1
+updated_by: "auto-gen"
