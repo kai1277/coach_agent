@@ -56,6 +56,7 @@ type LoopFetch =
       max: number;
       posterior: Posterior;
       evidence: EvidenceItem[];
+      persona_statement?: string;
     };
 
 type SessionOutput = {
@@ -942,6 +943,16 @@ export default function SessionPage() {
                     {(loopState as any).headline}
                   </div>
                 )}
+
+                {loopState.persona_statement && (
+                  <section className="space-y-1">
+                    <div className="font-medium">あなたはこういう人です！</div>
+                    <div className="rounded border p-3 whitespace-pre-wrap">
+                      {loopState.persona_statement}
+                    </div>
+                  </section>
+                )}
+
                 <div>
                   <div className="font-medium">あなたへの「次の一歩」</div>
                   <ul className="pl-0">
