@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCreateSession } from "../api/useCreateSession";
-import { useNextStep } from "../api/useNextStep";
+// import { useNextStep } from "../api/useNextStep";
 import { STRENGTH_THEMES, type StrengthTheme } from "../constants/strengths";
 import { SkeletonBlock } from "../../../ui/Skeleton";
 import { useToast } from "../../../ui/ToastProvider";
@@ -17,8 +17,8 @@ import type {
 } from "../../../types/api";
 import { api } from "../../../lib/apiClient";
 import { useQueryClient } from "@tanstack/react-query";
-import AnswerLog from "../../session/components/AnswerLog";
-import { useTurns } from "../../session/hooks/useTurns";
+// import AnswerLog from "../../session/components/AnswerLog";
+// import { useTurns } from "../../session/hooks/useTurns";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -265,8 +265,8 @@ export default function SessionPage() {
   const [sessionData, setSessionData] = useState<SessionDTO | null>(null);
 
   // null を undefined に正規化して渡す（hook 側の型と一致させる）
-  const advance = useNextStep(sessionId ?? null);
-  const [refineText, setRefineText] = useState("");
+  // const advance = useNextStep(sessionId ?? null);
+  // const [refineText, setRefineText] = useState("");
 
   const [timeToFirst, setTimeToFirst] = useState<number | null>(null);
   const [t0, setT0] = useState<number | null>(null);
@@ -285,7 +285,7 @@ export default function SessionPage() {
   const { data: restored } = useLoadSession(sessionFromUrl);
 
   const qc = useQueryClient();
-  const { data: turns = [] } = useTurns(sessionId ?? undefined);
+  //const { data: turns = [] } = useTurns(sessionId ?? undefined);
 
   const [list, setList] = useState<
     Array<{ id: string; title?: string | null; created_at: string }>
@@ -451,13 +451,13 @@ export default function SessionPage() {
     setLoopStarted(false);
     setLoopState(null);
     setLoopError(null);
-    setRefineText("");
+    // setRefineText("");
     setTimeToFirst(null);
     setSelected([]);
     setQuery("");
     setIdentity({} as IdentityValue);
     create.reset();
-    advance.reset();
+    // advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
   };
 
@@ -779,6 +779,7 @@ export default function SessionPage() {
           )}
 
           {/* 次の一歩 */}
+          {/*
           <section className="space-y-2">
             <h2 className="text-xl font-semibold">次の一歩</h2>
             <ul className="pl-0">
@@ -801,13 +802,16 @@ export default function SessionPage() {
               ))}
             </ul>
           </section>
+          */}
 
           {/* 回答履歴（turns） */}
+          {/*
           {turns.length === 0 ? (
             <div className="text-sm text-gray-500">まだ回答はありません</div>
           ) : (
             <AnswerLog turns={turns} />
           )}
+          */}
         </div>
       )}
 
@@ -820,6 +824,7 @@ export default function SessionPage() {
       )}
 
       {/* 追加指示 */}
+      {/*
       {sessionId && (
         <section className="space-y-2">
           <h3 className="font-medium">
@@ -871,6 +876,7 @@ export default function SessionPage() {
           )}
         </section>
       )}
+      */}
 
       {/* タイプ推定（ベータ） */}
       {sessionId && (
@@ -1033,7 +1039,7 @@ export default function SessionPage() {
                     </section>
 
                     <div>
-                      <div className="font-medium">あなたへの「次の一歩」</div>
+                      <div className="font-medium">やってみよう！</div>
                       <ul className="pl-0">
                         {(loopState.metadata.next_step.next_week_plan?.length
                           ? loopState.metadata.next_step.next_week_plan
@@ -1090,7 +1096,7 @@ export default function SessionPage() {
                     )}
 
                     <div>
-                      <div className="font-medium">あなたへの「次の一歩」</div>
+                      <div className="font-medium">やってみよう！</div>
                       <ul className="pl-0">
                         {loopState.next_steps.map((s, i) => (
                           <li key={i} className="list-none">
