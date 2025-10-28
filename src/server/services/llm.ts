@@ -95,7 +95,7 @@ function buildSeedPrompt(strengths: string[], demographics: any, n: number) {
 - 配列長は n 件
 - text は具体的で、5〜40文字程度
 - theme は strengths_top5 から選ぶ（不足する場合は最も関連の強い資質名を推定して入れる）
-- 質問は YES/NO を想定した短い文にする（例: 「歴史の本が好きですか？」）
+- 質問は「はい」「たぶんはい」「わからない」「たぶんいいえ」「いいえ」の5択で答えられる YES/NO 系の短い文にする（例: 「歴史の本が好きですか？」）
   `.trim();
 
   const user = `
