@@ -1029,25 +1029,25 @@ export default function SessionPage() {
                 {/* 新形式（CONCLUDE）：metadata.next_step を優先表示 */}
                 {isNewDone(loopState) ? (
                   <>
-                    <section className="space-y-1">
-                      <div className="font-medium">
+                    <section className="space-y-3">
+                      <div className="text-lg font-semibold">
                         あなたはこういう人です！
                       </div>
-                      <div className="rounded border p-3 whitespace-pre-wrap">
+                      <div className="whitespace-pre-wrap rounded-xl bg-white/80 px-5 py-4 leading-relaxed shadow-sm">
                         {loopState.metadata.next_step.summary}
                       </div>
                     </section>
 
-                    <div>
-                      <div className="font-medium">やってみよう！</div>
-                      <ul className="pl-0">
+                    <div className="space-y-3">
+                      <div className="text-lg font-semibold">やってみよう！</div>
+                      <ul className="pl-0 space-y-3">
                         {(loopState.metadata.next_step.next_week_plan?.length
                           ? loopState.metadata.next_step.next_week_plan
                           : loopState.metadata.next_step.management?.do || []
                         ).map((s, i) => (
                           <li key={i} className="list-none">
                             <button
-                              className="underline rounded px-1 py-0.5 hover:bg-gray-100"
+                              className="w-full text-left rounded-xl bg-white/80 px-5 py-3 text-base shadow-sm transition hover:bg-white"
                               onClick={() => {
                                 navigator.clipboard?.writeText(s).then(
                                   () =>
@@ -1069,9 +1069,9 @@ export default function SessionPage() {
                     </div>
 
                     {loopState.metadata.next_step.management?.dont?.length ? (
-                      <div>
-                        <div className="font-medium">避けたいこと</div>
-                        <ul className="list-disc pl-6 text-sm">
+                      <div className="space-y-3">
+                        <div className="text-lg font-semibold">避けたいこと</div>
+                        <ul className="list-disc pl-6 text-sm leading-relaxed">
                           {loopState.metadata.next_step.management.dont.map(
                             (d, i) => (
                               <li key={i}>{d}</li>
@@ -1085,23 +1085,23 @@ export default function SessionPage() {
                   // 旧形式（互換）：persona_statement / next_steps
                   <>
                     {(loopState as any).persona_statement && (
-                      <section className="space-y-1">
-                        <div className="font-medium">
+                      <section className="space-y-3">
+                        <div className="text-lg font-semibold">
                           あなたはこういう人です！
                         </div>
-                        <div className="rounded border p-3 whitespace-pre-wrap">
+                        <div className="whitespace-pre-wrap rounded-xl bg-white/80 px-5 py-4 leading-relaxed shadow-sm">
                           {(loopState as any).persona_statement}
                         </div>
                       </section>
                     )}
 
-                    <div>
-                      <div className="font-medium">やってみよう！</div>
-                      <ul className="pl-0">
+                    <div className="space-y-3">
+                      <div className="text-lg font-semibold">やってみよう！</div>
+                      <ul className="pl-0 space-y-3">
                         {loopState.next_steps.map((s, i) => (
                           <li key={i} className="list-none">
                             <button
-                              className="underline rounded px-1 py-0.5 hover:bg-gray-100"
+                              className="w-full text-left rounded-xl bg-white/80 px-5 py-3 text-base shadow-sm transition hover:bg-white"
                               onClick={() => {
                                 navigator.clipboard?.writeText(s).then(
                                   () =>
