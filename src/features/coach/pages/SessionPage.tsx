@@ -260,6 +260,7 @@ export default function SessionPage() {
   const navigate = useNavigate();
 
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
   const showToast = useToast();
 
   // Top5
@@ -392,6 +393,15 @@ export default function SessionPage() {
 
     return messages;
   }, [turns, loopState]);
+
+  // 新しいメッセージが追加されたら自動スクロール
+  useEffect(() => {
+    if (chatMessages.length > 0) {
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+  }, [chatMessages.length]);
 
   // 復元 → 正規化して保持
   useEffect(() => {
@@ -996,7 +1006,7 @@ export default function SessionPage() {
                         最初の質問を準備しています。少々お待ちください。
                       </Muted>
                     ) : (
-                      <div className="space-y-6">
+                      <div className="space-y-6 pb-4">
                         {chatMessages.map((msg) => {
                           const isAssistant = msg.role === "assistant";
                           const timestamp =
@@ -1011,7 +1021,7 @@ export default function SessionPage() {
                               )}
                             >
                               {isAssistant && (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-xs font-semibold text-slate-950">
+                                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-xs font-semibold text-slate-950">
                                   AI
                                 </div>
                               )}
@@ -1045,13 +1055,14 @@ export default function SessionPage() {
                                 ) : null}
                               </div>
                               {!isAssistant && (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/80 text-xs font-semibold text-slate-950">
+                                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/80 text-xs font-semibold text-slate-950">
                                   あなた
                                 </div>
                               )}
                             </div>
                           );
                         })}
+                        <div ref={chatEndRef} />
                       </div>
                     )}
                   </ScrollArea>
