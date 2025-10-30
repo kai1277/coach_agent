@@ -18,7 +18,7 @@ import type {
 import { api } from "../../../lib/apiClient";
 import { useQueryClient } from "@tanstack/react-query";
 // import AnswerLog from "../../session/components/AnswerLog";
-// import { useTurns } from "../../session/hooks/useTurns";
+import { useTurns } from "../../session/hooks/useTurns";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -244,7 +244,7 @@ function getProgress(
 export default function SessionPage() {
   const navigate = useNavigate();
 
-  const firstAnswerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const showToast = useToast();
 
   // Top5
@@ -285,7 +285,12 @@ export default function SessionPage() {
   const { data: restored } = useLoadSession(sessionFromUrl);
 
   const qc = useQueryClient();
-  //const { data: turns = [] } = useTurns(sessionId ?? undefined);
+  const { data: turns = [], isFetching: turnsLoading } = useTurns(
+    sessionId ?? undefined
+  );
+
+  const [answerInput, setAnswerInput] = useState("");
+  const [selectedChoice, setSelectedChoice] = useState<Answer5 | null>(null);
 
   const [list, setList] = useState<
     Array<{ id: string; title?: string | null; created_at: string }>
@@ -307,9 +312,73 @@ export default function SessionPage() {
     })();
   }, [sessionId]);
 
-  const [lastTraceId, setLastTraceId] = useState<string | null>(null);
-  const [fbBusy, setFbBusy] = useState(false);
-  const [fbNote, setFbNote] = useState("");
+
+  const chatMessages = useMemo(() => {
+    const messages: Array<{
+      id: string;
+      role: "assistant" | "user";
+      text: string;
+      createdAt?: string;
+      pending?: boolean;
+      questionId?: string;
+    }> = [];
+
+    (turns ?? []).forEach((t: any) => {
+      const c = t?.content ?? {};
+      if (
+        t.role === "assistant" &&
+        c?.type === "question" &&
+        typeof c?.text === "string" &&
+        c.text.trim().length > 0
+      ) {
+        messages.push({
+          id: t.id,
+          role: "assistant",
+          text: String(c.text),
+          createdAt: t.created_at,
+          questionId: c.question_id ?? undefined,
+        });
+      } else if (t.role === "user" && c?.type === "answer") {
+        const textFromContent =
+          typeof c.answer_text === "string" && c.answer_text.trim().length > 0
+            ? c.answer_text.trim()
+            : null;
+        const labelFromChoice =
+          typeof c.answer === "string"
+            ? ANSWER_LABEL[c.answer as Answer5] ?? String(c.answer)
+            : "";
+        const msgText = textFromContent ?? labelFromChoice;
+        if (msgText) {
+          messages.push({
+            id: t.id,
+            role: "user",
+            text: msgText,
+            createdAt: t.created_at,
+            questionId: c.question_id ?? undefined,
+          });
+        }
+      }
+    });
+
+    const current = getCurrentQuestion(loopState);
+    if (
+      current?.id &&
+      !messages.some(
+        (m) => m.role === "assistant" && m.questionId === current.id
+      ) &&
+      (current.text?.trim() ?? "").length > 0
+    ) {
+      messages.push({
+        id: `pending-${current.id}`,
+        role: "assistant",
+        text: current.text ?? "",
+        pending: true,
+        questionId: current.id,
+      });
+    }
+
+    return messages;
+  }, [turns, loopState]);
 
   // 復元 → 正規化して保持
   useEffect(() => {
@@ -377,8 +446,10 @@ export default function SessionPage() {
     try {
       const data = await api.sessions.getNext(sessionId);
       setLoopState(data as any);
-      setLastTraceId((data as any)?.trace_id ?? null);
-      setTimeout(() => firstAnswerBtnRef.current?.focus(), 0);
+      setAnswerInput("");
+      setSelectedChoice(null);
+      qc.invalidateQueries({ queryKey: ["turns", sessionId] });
+      setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -389,17 +460,26 @@ export default function SessionPage() {
   };
 
   // 回答送信
-  const answer = async (qId: string, a: Answer5) => {
+  const answer = async ({
+    questionId,
+    text,
+    choice,
+  }: {
+    questionId: string;
+    text?: string;
+    choice?: Answer5 | null;
+  }) => {
     if (!sessionId) return;
     setLoopBusy(true);
     setLoopError(null);
     try {
+      const trimmed = text?.trim() ?? "";
       const data = await api.sessions.answer(sessionId, {
-        questionId: qId,
-        answer: a,
+        questionId,
+        answer: choice ?? "UNKNOWN",
+        answerText: trimmed || undefined,
       });
       setLoopState(data as any);
-      setLastTraceId((data as any)?.trace_id ?? null);
       // 回答ログとセッションの最新化
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       qc.invalidateQueries({ queryKey: ["session", sessionId] });
@@ -408,7 +488,9 @@ export default function SessionPage() {
         showToast("推定が確定しました", { type: "success" });
       }
       // サーバーから次の質問も含めて返ってくるので、fetchNext()は不要
-      setTimeout(() => firstAnswerBtnRef.current?.focus(), 0);
+      setAnswerInput("");
+      setSelectedChoice(null);
+      setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -416,6 +498,20 @@ export default function SessionPage() {
     } finally {
       setLoopBusy(false);
     }
+  };
+
+  const submitCurrentAnswer = async (questionId?: string | null) => {
+    if (!questionId || loopBusy) return;
+    const trimmed = answerInput.trim();
+    if (!trimmed && !selectedChoice) {
+      showToast("回答を入力してください", { type: "info" });
+      return;
+    }
+    await answer({
+      questionId,
+      text: trimmed,
+      choice: selectedChoice ?? undefined,
+    });
   };
 
   // 取り消し
@@ -430,6 +526,9 @@ export default function SessionPage() {
       // 取り消し後のログとセッションの最新化
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       qc.invalidateQueries({ queryKey: ["session", sessionId] });
+      setAnswerInput("");
+      setSelectedChoice(null);
+      setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -456,6 +555,8 @@ export default function SessionPage() {
     setLoopState(null);
     setLoopError(null);
     // setRefineText("");
+    setAnswerInput("");
+    setSelectedChoice(null);
     setTimeToFirst(null);
     setSelected([]);
     setQuery("");
@@ -464,64 +565,6 @@ export default function SessionPage() {
     // advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
   };
-
-  const sendFeedback = async (kind: "up" | "down") => {
-    if (!lastTraceId) {
-      showToast("評価対象がありません（trace_idなし）", { type: "error" });
-      return;
-    }
-    setFbBusy(true);
-    try {
-      // 最小実装：fetch 直叩き（apiClient に生やしてもOK）
-      const resp = await fetch("/api/hitl/reviews", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          trace_id: lastTraceId,
-          target: "question", // 今回は質問の質に対する評価
-          reviewer: "anon", // 任意：ログインがあればユーザー名
-          comments: (kind === "up" ? "👍 " : "👎 ") + (fbNote ?? ""),
-          rubric_version: "rubric_v1.0",
-        }),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      setFbNote(""); // 送ったらメモはクリア
-      showToast("評価ありがとうございました！", { type: "success" });
-    } catch (e: any) {
-      showToast(`送信に失敗しました: ${String(e?.message || e)}`, {
-        type: "error",
-      });
-    } finally {
-      setFbBusy(false);
-    }
-  };
-
-  // キーショートカット（1..5で回答）
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!loopState || !("done" in loopState) || loopState.done) return;
-      const q = getCurrentQuestion(loopState);
-      if (!q?.id) return;
-
-      const map: Record<
-        string,
-        "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO"
-      > = {
-        "1": "YES",
-        "2": "PROB_YES",
-        "3": "UNKNOWN",
-        "4": "PROB_NO",
-        "5": "NO",
-      };
-      const a = map[e.key];
-      if (a) {
-        e.preventDefault();
-        answer(q.id, a);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [loopState]);
 
   const PersonaView = ({ profile }: { profile: StrengthProfile }) => {
     return (
@@ -914,84 +957,130 @@ export default function SessionPage() {
                     進捗: {prog.asked}/{prog.max || "—"}
                   </div>
 
-                  <div className="p-3 rounded border">
-                    <div className="font-medium mb-2">
-                      Q: {curQ?.text || "（取得中）"}
+                  <div className="rounded-lg border overflow-hidden flex flex-col bg-white">
+                    <div className="flex-1 overflow-y-auto space-y-3 p-3 bg-gray-50">
+                      {turnsLoading ? (
+                        <div className="text-sm text-gray-500">
+                          履歴を読み込んでいます…
+                        </div>
+                      ) : chatMessages.length === 0 ? (
+                        <div className="text-sm text-gray-500">
+                          最初の質問を準備しています。少々お待ちください。
+                        </div>
+                      ) : (
+                        chatMessages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`flex ${
+                              msg.role === "assistant"
+                                ? "justify-start"
+                                : "justify-end"
+                            }`}
+                          >
+                            <div
+                              className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
+                                msg.role === "assistant"
+                                  ? "bg-white border"
+                                  : "bg-black text-white"
+                              }`}
+                            >
+                              <div>{msg.text}</div>
+                              {msg.pending && !msg.createdAt ? (
+                                <div className="mt-1 text-[10px] text-gray-400">
+                                  送信準備中…
+                                </div>
+                              ) : null}
+                              {msg.createdAt ? (
+                                <div
+                                  className={`mt-1 text-[10px] ${
+                                    msg.role === "assistant"
+                                      ? "text-gray-400"
+                                      : "text-white/70"
+                                  }`}
+                                >
+                                  {new Date(msg.createdAt).toLocaleTimeString()}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
-                    <div className="text-xs text-gray-500 mb-1">
-                      ※ キー操作: 1=はい / 2=たぶんはい / 3=わからない /
-                      4=たぶんいいえ / 5=いいえ
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {(
-                        [
-                          { k: "YES", label: "はい" },
-                          { k: "PROB_YES", label: "たぶんはい" },
-                          { k: "UNKNOWN", label: "わからない" },
-                          { k: "PROB_NO", label: "たぶんいいえ" },
-                          { k: "NO", label: "いいえ" },
-                        ] as const
-                      ).map((opt, idx) => (
-                        <button
-                          key={opt.k}
-                          ref={idx === 0 ? firstAnswerBtnRef : undefined}
-                          disabled={loopBusy || !curQ?.id}
-                          className="rounded border px-3 py-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-black"
-                          onClick={() =>
-                            curQ?.id && answer(curQ.id, opt.k as any)
+                    <form
+                      className="border-t bg-white p-3 space-y-2"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        await submitCurrentAnswer(curQ?.id);
+                      }}
+                    >
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">現在の質問</div>
+                        <div className="text-sm font-medium text-gray-800">
+                          {curQ?.text || "（取得中）"}
+                        </div>
+                      </div>
+                      <textarea
+                        ref={messageInputRef}
+                        className="w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black min-h-[96px] resize-vertical disabled:opacity-50"
+                        placeholder="自由に回答を入力してください。Shift+Enterで改行、Enterで送信できます。"
+                        value={answerInput}
+                        onChange={(e) => setAnswerInput(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            await submitCurrentAnswer(curQ?.id);
                           }
+                        }}
+                        disabled={loopBusy || !curQ?.id}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-gray-500">クイック返信:</span>
+                        {(Object.entries(ANSWER_LABEL) as Array<[
+                          Answer5,
+                          string,
+                        ]>).map(([key, label]) => (
+                          <button
+                            type="button"
+                            key={key}
+                            className={`rounded-full border px-3 py-1 text-xs transition ${
+                              selectedChoice === key
+                                ? "bg-black text-white border-black"
+                                : "bg-white text-gray-700 hover:bg-gray-100"
+                            } disabled:opacity-50`}
+                            disabled={loopBusy}
+                            onClick={() =>
+                              setSelectedChoice((prev) =>
+                                prev === key ? null : key
+                              )
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                        {selectedChoice && (
+                          <button
+                            type="button"
+                            className="text-xs text-gray-500 underline"
+                            onClick={() => setSelectedChoice(null)}
+                            disabled={loopBusy}
+                          >
+                            選択をクリア
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
+                          disabled={loopBusy || !curQ?.id}
                         >
-                          {opt.label}
+                          {loopBusy ? "送信中…" : "送信"}
                         </button>
-                      ))}
-                    </div>
+                      </div>
+                    </form>
                   </div>
 
-                  {/* === 質問に対するワンクリック評価（一旦非表示） === */}
-                  {false && (
-                    <>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-sm text-gray-600">
-                          この質問は役に立ちましたか？
-                        </span>
-                        <button
-                          className="px-2 py-1 rounded border disabled:opacity-50"
-                          disabled={!lastTraceId || fbBusy}
-                          onClick={() => sendFeedback("up")}
-                          title="役に立った"
-                        >
-                          👍 良い
-                        </button>
-                        <button
-                          className="px-2 py-1 rounded border disabled:opacity-50"
-                          disabled={!lastTraceId || fbBusy}
-                          onClick={() => sendFeedback("down")}
-                          title="役に立たない／改善してほしい"
-                        >
-                          👎 微妙
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <input
-                          className="flex-1 rounded border p-2 text-sm"
-                          placeholder="任意メモ（なぜ良い/悪い？改善案など）"
-                          value={fbNote}
-                          onChange={(e) => setFbNote(e.target.value)}
-                          disabled={!lastTraceId || fbBusy}
-                        />
-                        <button
-                          className="px-3 py-1 rounded border text-sm disabled:opacity-50"
-                          disabled={!lastTraceId || fbBusy || !fbNote.trim()}
-                          onClick={() => sendFeedback("down")}
-                          title="メモ付きで送信（改善要望など）"
-                        >
-                          送信
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <button
                       className="rounded border px-3 py-2"
                       disabled={loopBusy}
