@@ -981,7 +981,7 @@ export default function SessionPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="flex max-h-[680px] flex-col overflow-hidden p-0">
+              <Card className="flex h-[680px] flex-col overflow-hidden p-0">
                 <div className="border-b border-white/5 px-6 py-4 flex-shrink-0">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
