@@ -43,15 +43,3 @@ export async function ingestCasebook(yamlPath: string) {
   if (error) throw error;
   console.log(`[ingest] upsert: ${doc.id}`);
 }
-
-if (require.main === module) {
-  const p = process.argv[2];
-  if (!p) {
-    console.error('Usage: ts-node scripts/ingest-casebook.ts ./casebook/H-woo-analytical.yaml');
-    process.exit(1);
-  }
-  ingestCasebook(p).catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
-}
