@@ -1,42 +1,42 @@
 id: STR-discipline
-strength: 規律性 (Discipline)
-domain: 実行力
+strength: "規律性 (Discipline)"
+domain: "実行力"
 summary:
   look_like:
-    - ルール・手順・秩序を好み、整然と管理する
+    - "ルール・手順・秩序を好み、整然と管理する"
   value_when_fit:
-    - 安定運用・品質維持・スケール段階の標準化
+    - "安定運用・品質維持・スケール段階の標準化"
   risks_when_misfit:
-    - 柔軟性に欠け、変化局面で硬直
+    - "柔軟性に欠け、変化局面で硬直"
 signals:
   positive_signs:
-    - 進行計画や手順書が整備されている
+    - "進行計画や手順書が整備されている"
   negative_signs:
-    - 手順変更に強い抵抗
+    - "手順変更に強い抵抗"
   contexts_good:
-    - 1→10フェーズ、運用/管理/SOP設計
+    - "1→10フェーズ、運用/管理/SOP設計"
   contexts_bad:
-    - カオスな0→1新規開発
+    - "カオスな0→1新規開発"
 probes:
   baseline:
-    - "あなたが守っている“秩序”は何？"
+    - "あなたが守っている‘秩序’は何？"
   disambiguation:
     - "ルールを変えるときの基準は？"
   followups:
     - "混乱を整理する最初の一手は？"
 management:
   role_fit_best:
-    - 標準化・品質管理・プロセス設計
+    - "標準化・品質管理・プロセス設計"
   role_fit_avoid:
-    - 即興型の創造フェーズ
+    - "即興型の創造フェーズ"
   do:
-    - 標準化やマニュアル整備を任せる
+    - "標準化やマニュアル整備を任せる"
   dont:
-    - 混乱した現場に単独投入
+    - "混乱した現場に単独投入"
   guardrails:
-    - 変更管理プロセスを設定
+    - "変更管理プロセスを設定"
   metrics:
-    - 手順遵守率、再発防止率
+    - "手順遵守率、再発防止率"
 pairing:
   synergize_with:
     最上志向: "品質磨きと標準化の両立"

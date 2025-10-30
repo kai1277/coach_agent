@@ -1,36 +1,48 @@
 id: STR-activator
-strength: 活発性 (Activator)
-domain: 影響力
+strength: "活発性 (Activator)"
+domain: "影響力"
 summary:
   look_like:
-    - 新しいものに強く惹かれ、興味が湧くとすぐ動く
+    - "新しいものに強く惹かれ、興味が湧くとすぐ動く"
   value_when_fit:
-    - 初動・着火役としてチームに勢いを与える
+    - "初動・着火役としてチームに勢いを与える"
   risks_when_misfit:
-    - 飽きが早く継続が弱い
+    - "飽きが早く継続が弱い"
 signals:
   positive_signs:
-    - 新規プロジェクト立ち上げ時に高いエネルギー
+    - "新規プロジェクト立ち上げ時に高いエネルギー"
   negative_signs:
-    - 長期タスクでの集中低下
+    - "長期タスクでの集中低下"
   contexts_good:
-    - 0→1の立ち上げ、短期スプリント
+    - "0→1の立ち上げ、短期スプリント"
   contexts_bad:
-    - 長期の定常業務
+    - "長期の定常業務"
 probes:
-  baseline: ["最近始めた新しいことは？"]
-  disambiguation: ["アイデア出し止まりになっていない？"]
-  followups: ["飽きずに続けられた理由は？"]
+  baseline:
+    - "最近始めた新しいことは？"
+  disambiguation:
+    - "アイデア出し止まりになっていない？"
+  followups:
+    - "飽きずに続けられた理由は？"
 management:
-  role_fit_best: ["短期的プロジェクトの起動"]
-  role_fit_avoid: ["単調な長期運用"]
-  do: ["スプリント区切りを設け、連続起動を設計"]
-  dont: ["放置するとモチベ低下"]
-  guardrails: ["終了条件を明確化"]
-  metrics: ["起動件数/月"]
+  role_fit_best:
+    - "短期的プロジェクトの起動"
+  role_fit_avoid:
+    - "単調な長期運用"
+  do:
+    - "スプリント区切りを設け、連続起動を設計"
+  dont:
+    - "放置するとモチベ低下"
+  guardrails:
+    - "終了条件を明確化"
+  metrics:
+    - "起動件数/月"
 pairing:
-  synergize_with: { "規律性": "立ち上げ後の整備との連携" }
-  watch_out_with: { "内省": "熟考過多で停滞" }
-examples: ["新規テーマを連続で起動し、成果を上げた"]
+  synergize_with:
+    - "規律性: 立ち上げ後の整備との連携"
+  watch_out_with:
+    - "内省: 熟考過多で停滞"
+examples:
+  - "新規テーマを連続で起動し、成果を上げた"
 version: 1
 updated_by: "auto-gen"

@@ -1,32 +1,48 @@
 id: STR-competition
-strength: 競争性 (Competition)
-domain: 影響力
+strength: "競争性 (Competition)"
+domain: "影響力"
 summary:
   look_like:
-    - 相対比較で燃える
+    - "相対比較で燃える"
   value_when_fit:
-    - 競争のある環境で成果を出す
+    - "競争のある環境で成果を出す"
   risks_when_misfit:
-    - 比較対象がないと動機低下
+    - "比較対象がないと動機低下"
 signals:
-  positive_signs: ["順位・スコアを意識する発言"]
-  negative_signs: ["非競争環境で停滞"]
-  contexts_good: ["営業、ランキング制KPI"]
-  contexts_bad: ["曖昧な評価環境"]
+  positive_signs:
+    - "順位・スコアを意識する発言"
+  negative_signs:
+    - "非競争環境で停滞"
+  contexts_good:
+    - "営業、ランキング制KPI"
+  contexts_bad:
+    - "曖昧な評価環境"
 probes:
-  baseline: ["最近勝負を感じた瞬間は？"]
-  disambiguation: ["最上志向との違いは？"]
-  followups: ["競争が可視化された時どう変わる？"]
+  baseline:
+    - "最近勝負を感じた瞬間は？"
+  disambiguation:
+    - "最上志向との違いは？"
+  followups:
+    - "競争が可視化された時どう変わる？"
 management:
-  role_fit_best: ["明確な指標で競える業務"]
-  role_fit_avoid: ["定常的な内勤"]
-  do: ["KPIランキング化"]
-  dont: ["競争要素を排除"]
-  guardrails: ["健全競争を維持"]
-  metrics: ["順位推移"]
+  role_fit_best:
+    - "明確な指標で競える業務"
+  role_fit_avoid:
+    - "定常的な内勤"
+  do:
+    - "KPIランキング化"
+  dont:
+    - "競争要素を排除"
+  guardrails:
+    - "健全競争を維持"
+  metrics:
+    - "順位推移"
 pairing:
-  synergize_with: { "目標志向": "目標設計と勝負の明確化" }
-  watch_out_with: { "調和性": "衝突回避を支援" }
-examples: ["KPI競争で成果倍増"]
+  synergize_with:
+    - "目標志向: 目標設計と勝負の明確化"
+  watch_out_with:
+    - "調和性: 衝突回避を支援"
+examples:
+  - "KPI競争で成果倍増"
 version: 1
 updated_by: "auto-gen"

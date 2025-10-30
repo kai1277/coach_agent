@@ -1,22 +1,22 @@
 id: STR-deliberative
-strength: 慎重さ (Deliberative)
-domain: 実行力
+strength: "慎重さ (Deliberative)"
+domain: "実行力"
 summary:
   look_like:
-    - リスクヘッジを徹底し、石橋を叩いて渡るタイプ
+    - "リスクヘッジを徹底し、石橋を叩いて渡るタイプ"
   value_when_fit:
-    - 重要工程での安全性・品質の担保
+    - "重要工程での安全性・品質の担保"
   risks_when_misfit:
-    - 判断や実行が遅れ、機会損失が起こる
+    - "判断や実行が遅れ、機会損失が起こる"
 signals:
   positive_signs:
-    - 危険要素を早期に検知し、回避策を提示
+    - "危険要素を早期に検知し、回避策を提示"
   negative_signs:
-    - 懸念リストが増えすぎて前進しない
+    - "懸念リストが増えすぎて前進しない"
   contexts_good:
-    - 監査、セキュリティ、リスク評価、品質保証
+    - "監査、セキュリティ、リスク評価、品質保証"
   contexts_bad:
-    - スピード最優先の緊急対応
+    - "スピード最優先の緊急対応"
 probes:
   baseline:
     - "今のリスクTOP3と、その対策は？"
@@ -26,17 +26,17 @@ probes:
     - "安心して進めるために必要な情報は？"
 management:
   role_fit_best:
-    - 品質保証、SRE、監査、設計レビュー
+    - "品質保証、SRE、監査、設計レビュー"
   role_fit_avoid:
-    - スピード型の先行開発プロジェクト
+    - "スピード型の先行開発プロジェクト"
   do:
-    - 小刻みな工程設計とリスクレビューを明示
+    - "小刻みな工程設計とリスクレビューを明示"
   dont:
-    - 曖昧な進行・丸投げ
+    - "曖昧な進行・丸投げ"
   guardrails:
-    - リスク受容基準（RACI表）を明確に
+    - "リスク受容基準（RACI表）を明確に"
   metrics:
-    - 重大インシデント率、進行遅延件数
+    - "重大インシデント率、進行遅延件数"
 pairing:
   synergize_with:
     目標志向: "慎重でも目的到達に導く"

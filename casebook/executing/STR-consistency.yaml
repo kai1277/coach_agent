@@ -1,22 +1,22 @@
 id: STR-consistency
-strength: 公平性 (Consistency)
-domain: 実行力
+strength: "公平性 (Consistency)"
+domain: "実行力"
 summary:
   look_like:
-    - 一貫性・公平性を重視し、差別やえこひいきを嫌う
+    - "一貫性・公平性を重視し、差別やえこひいきを嫌う"
   value_when_fit:
-    - 公平な評価・運用・ガバナンス構築
+    - "公平な評価・運用・ガバナンス構築"
   risks_when_misfit:
-    - 差別化が必要な場で葛藤、判断が遅れる
+    - "差別化が必要な場で葛藤、判断が遅れる"
 signals:
   positive_signs:
-    - 基準を明文化し、平等に適用
+    - "基準を明文化し、平等に適用"
   negative_signs:
-    - 全員同一処遇に固執
+    - "全員同一処遇に固執"
   contexts_good:
-    - 人事・審査・監査業務
+    - "人事・審査・監査業務"
   contexts_bad:
-    - 創造的裁量が求められる局面
+    - "創造的裁量が求められる局面"
 probes:
   baseline:
     - "公平であるために一番気を付けていることは？"
@@ -26,17 +26,17 @@ probes:
     - "透明性と柔軟性のバランスをどう取る？"
 management:
   role_fit_best:
-    - 評価制度運用、審査プロセス、法務
+    - "評価制度運用、審査プロセス、法務"
   role_fit_avoid:
-    - アドホック判断を求められる営業職
+    - "アドホック判断を求められる営業職"
   do:
-    - 基準と説明責任を明確化
+    - "基準と説明責任を明確化"
   dont:
-    - 不公平感を放置
+    - "不公平感を放置"
   guardrails:
-    - 評価ルールを定期見直し
+    - "評価ルールを定期見直し"
   metrics:
-    - 苦情件数、公平性満足度
+    - "苦情件数、公平性満足度"
 pairing:
   synergize_with:
     個別化: "公平の上で個別最適を設計"

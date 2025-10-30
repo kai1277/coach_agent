@@ -1,29 +1,48 @@
 id: STR-command
-strength: 指令性 (Command)
-domain: 影響力
+strength: "指令性 (Command)"
+domain: "影響力"
 summary:
-  look_like: ["自ら意思決定し場を動かす"]
-  value_when_fit: ["意思決定力・リーダーシップ"]
-  risks_when_misfit: ["上位者と衝突"]
+  look_like:
+    - "自ら意思決定し場を動かす"
+  value_when_fit:
+    - "意思決定力・リーダーシップ"
+  risks_when_misfit:
+    - "上位者と衝突"
 signals:
-  positive_signs: ["強い提案や号令が多い"]
-  negative_signs: ["衝突や孤立"]
-  contexts_good: ["プロジェクトリーダー、危機局面"]
-  contexts_bad: ["上司主導で裁量がない環境"]
+  positive_signs:
+    - "強い提案や号令が多い"
+  negative_signs:
+    - "衝突や孤立"
+  contexts_good:
+    - "プロジェクトリーダー、危機局面"
+  contexts_bad:
+    - "上司主導で裁量がない環境"
 probes:
-  baseline: ["最近リーダーシップを発揮した瞬間は？"]
-  disambiguation: ["自己確信との違いは？"]
-  followups: ["衝突を建設的に処理する方法は？"]
+  baseline:
+    - "最近リーダーシップを発揮した瞬間は？"
+  disambiguation:
+    - "自己確信との違いは？"
+  followups:
+    - "衝突を建設的に処理する方法は？"
 management:
-  role_fit_best: ["小チームリーダー、危機対応"]
-  role_fit_avoid: ["裁量ゼロの下位ロール"]
-  do: ["小さくても裁量領域を与える"]
-  dont: ["意見封殺"]
-  guardrails: ["意見対立時のファシリ設定"]
-  metrics: ["決定スピード, チーム納得度"]
+  role_fit_best:
+    - "小チームリーダー、危機対応"
+  role_fit_avoid:
+    - "裁量ゼロの下位ロール"
+  do:
+    - "小さくても裁量領域を与える"
+  dont:
+    - "意見封殺"
+  guardrails:
+    - "意見対立時のファシリ設定"
+  metrics:
+    - "決定スピード, チーム納得度"
 pairing:
-  synergize_with: { "責任感": "指示→実行の信頼線" }
-  watch_out_with: { "調和性": "対立緩和を設計" }
-examples: ["緊急対応で的確に指示を出す"]
+  synergize_with:
+    - "責任感: 指示→実行の信頼線"
+  watch_out_with:
+    - "調和性: 対立緩和を設計"
+examples:
+  - "緊急対応で的確に指示を出す"
 version: 1
 updated_by: "auto-gen"

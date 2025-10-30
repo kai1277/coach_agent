@@ -1,29 +1,48 @@
 id: STR-woo
-strength: 社交性 (Woo)
-domain: 影響力
+strength: "社交性 (Woo)"
+domain: "影響力"
 summary:
-  look_like: ["誰とでもすぐ仲良くなる"]
-  value_when_fit: ["初期関係構築・場づくりに強み"]
-  risks_when_misfit: ["浅い関係で止まる"]
+  look_like:
+    - "誰とでもすぐ仲良くなる"
+  value_when_fit:
+    - "初期関係構築・場づくりに強み"
+  risks_when_misfit:
+    - "浅い関係で止まる"
 signals:
-  positive_signs: ["初対面での打率が高い"]
-  negative_signs: ["関係維持に課題"]
-  contexts_good: ["営業初期・オンボード"]
-  contexts_bad: ["長期フォロー中心業務"]
+  positive_signs:
+    - "初対面での打率が高い"
+  negative_signs:
+    - "関係維持に課題"
+  contexts_good:
+    - "営業初期・オンボード"
+  contexts_bad:
+    - "長期フォロー中心業務"
 probes:
-  baseline: ["最初に距離を縮めるコツは？"]
-  disambiguation: ["共感性との違いは？"]
-  followups: ["深める関係づくりの型は？"]
+  baseline:
+    - "最初に距離を縮めるコツは？"
+  disambiguation:
+    - "共感性との違いは？"
+  followups:
+    - "深める関係づくりの型は？"
 management:
-  role_fit_best: ["初期関係構築"]
-  role_fit_avoid: ["長期深耕の単独担当"]
-  do: ["初期接点業務を任せる"]
-  dont: ["深掘り任務を丸投げ"]
-  guardrails: ["関係引継ぎルール"]
-  metrics: ["初期接点→再訪率"]
+  role_fit_best:
+    - "初期関係構築"
+  role_fit_avoid:
+    - "長期深耕の単独担当"
+  do:
+    - "初期接点業務を任せる"
+  dont:
+    - "深掘り任務を丸投げ"
+  guardrails:
+    - "関係引継ぎルール"
+  metrics:
+    - "初期接点→再訪率"
 pairing:
-  synergize_with: { "分析思考": "論理＋人間関係で信頼向上" }
-  watch_out_with: { "内省": "考え込みで停滞" }
-examples: ["新規顧客獲得を牽引"]
+  synergize_with:
+    - "分析思考: 論理＋人間関係で信頼向上"
+  watch_out_with:
+    - "内省: 考え込みで停滞"
+examples:
+  - "新規顧客獲得を牽引"
 version: 1
 updated_by: "auto-gen"

@@ -1,29 +1,48 @@
 id: STR-significance
-strength: 自我 (Significance)
-domain: 影響力
+strength: "自我 (Significance)"
+domain: "影響力"
 summary:
-  look_like: ["自分の価値・意義を重視"]
-  value_when_fit: ["信念・使命感の強さ"]
-  risks_when_misfit: ["承認されないと不満"]
+  look_like:
+    - "自分の価値・意義を重視"
+  value_when_fit:
+    - "信念・使命感の強さ"
+  risks_when_misfit:
+    - "承認されないと不満"
 signals:
-  positive_signs: ["理念・信念に基づく発言"]
-  negative_signs: ["承認要求が過度"]
-  contexts_good: ["ミッション駆動のプロジェクト"]
-  contexts_bad: ["貢献実感がない下請け業務"]
+  positive_signs:
+    - "理念・信念に基づく発言"
+  negative_signs:
+    - "承認要求が過度"
+  contexts_good:
+    - "ミッション駆動のプロジェクト"
+  contexts_bad:
+    - "貢献実感がない下請け業務"
 probes:
-  baseline: ["自分が社会に与えたい価値は？"]
-  disambiguation: ["信念(Belief)との違いは？"]
-  followups: ["承認をどう受け取りたい？"]
+  baseline:
+    - "自分が社会に与えたい価値は？"
+  disambiguation:
+    - "信念(Belief)との違いは？"
+  followups:
+    - "承認をどう受け取りたい？"
 management:
-  role_fit_best: ["意義が明確なプロジェクト"]
-  role_fit_avoid: ["無名・裏方業務"]
-  do: ["存在意義を明示する"]
-  dont: ["承認機会ゼロ"]
-  guardrails: ["過剰承認を避けバランス"]
-  metrics: ["自己評価スコア, 承認率"]
+  role_fit_best:
+    - "意義が明確なプロジェクト"
+  role_fit_avoid:
+    - "無名・裏方業務"
+  do:
+    - "存在意義を明示する"
+  dont:
+    - "承認機会ゼロ"
+  guardrails:
+    - "過剰承認を避けバランス"
+  metrics:
+    - "自己評価スコア, 承認率"
 pairing:
-  synergize_with: { "学習欲": "価値ある成長へ結びつけ" }
-  watch_out_with: { "慎重さ": "動きが遅くなる" }
-examples: ["社会的意義のあるPJで最大成果"]
+  synergize_with:
+    - "学習欲: 価値ある成長へ結びつけ"
+  watch_out_with:
+    - "慎重さ: 動きが遅くなる"
+examples:
+  - "社会的意義のあるPJで最大成果"
 version: 1
 updated_by: "auto-gen"

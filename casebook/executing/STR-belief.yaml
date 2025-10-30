@@ -1,42 +1,42 @@
 id: STR-belief
-strength: 信念 (Belief)
-domain: 実行力
+strength: "信念 (Belief)"
+domain: "実行力"
 summary:
   look_like:
-    - 揺るがない価値観・軸を持ち行動する
+    - "揺るがない価値観・軸を持ち行動する"
   value_when_fit:
-    - 方針の一貫性、ブレない判断
+    - "方針の一貫性、ブレない判断"
   risks_when_misfit:
-    - 組織方針と衝突し、頑固さと捉えられる
+    - "組織方針と衝突し、頑固さと捉えられる"
 signals:
   positive_signs:
-    - 意思決定の根拠が原則ベース
+    - "意思決定の根拠が原則ベース"
   negative_signs:
-    - 他者の多様性を受け入れにくい
+    - "他者の多様性を受け入れにくい"
   contexts_good:
-    - ミッションドリブンな組織、理念策定
+    - "ミッションドリブンな組織、理念策定"
   contexts_bad:
-    - 頻繁に方向転換する現場
+    - "頻繁に方向転換する現場"
 probes:
   baseline:
-    - "自分の仕事の“軸”は？"
+    - "自分の仕事の‘軸’は？"
   disambiguation:
     - "価値観が組織とズレた時どうする？"
   followups:
     - "譲れない条件と柔軟に変えられる部分は？"
 management:
   role_fit_best:
-    - ビジョン策定、倫理判断、CSR関連
+    - "ビジョン策定、倫理判断、CSR関連"
   role_fit_avoid:
-    - 指示変更が頻繁なポジション
+    - "指示変更が頻繁なポジション"
   do:
-    - 方針整合を最初に合わせ、共通原則を明文化
+    - "方針整合を最初に合わせ、共通原則を明文化"
   dont:
-    - 原則を曖昧なまま仕事を任せる
+    - "原則を曖昧なまま仕事を任せる"
   guardrails:
-    - 原則と例外運用の明示
+    - "原則と例外運用の明示"
   metrics:
-    - 方針遵守率、理念整合度
+    - "方針遵守率、理念整合度"
 pairing:
   synergize_with:
     自我: "信念に承認の力を加える"

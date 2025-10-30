@@ -1,42 +1,42 @@
 id: STR-responsibility
-strength: 責任感 (Responsibility)
-domain: 実行力
+strength: "責任感 (Responsibility)"
+domain: "実行力"
 summary:
   look_like:
-    - 引き受けたことをやり遂げる。約束破りが嫌い
+    - "引き受けたことをやり遂げる。約束破りが嫌い"
   value_when_fit:
-    - 高信頼の実行者・顧客対応の安定感
+    - "高信頼の実行者・顧客対応の安定感"
   risks_when_misfit:
-    - 過負荷・燃え尽き、抱え込み
+    - "過負荷・燃え尽き、抱え込み"
 signals:
   positive_signs:
-    - 納期・品質遵守率が高い
+    - "納期・品質遵守率が高い"
   negative_signs:
-    - ヘルプ要請が遅れ、疲弊
+    - "ヘルプ要請が遅れ、疲弊"
   contexts_good:
-    - 顧客対応、プロジェクト管理、品質保証
+    - "顧客対応、プロジェクト管理、品質保証"
   contexts_bad:
-    - 責任範囲が曖昧な環境
+    - "責任範囲が曖昧な環境"
 probes:
   baseline:
-    - "最近“任されたことをやり遂げた”例は？"
+    - "最近‘任されたことをやり遂げた’例は？"
   disambiguation:
     - "助けを求める基準は？"
   followups:
     - "抱え込み防止のために必要な支援は？"
 management:
   role_fit_best:
-    - 契約遂行、顧客フロント、タスク完遂役
+    - "契約遂行、顧客フロント、タスク完遂役"
   role_fit_avoid:
-    - 責任分担不明な曖昧案件
+    - "責任分担不明な曖昧案件"
   do:
-    - 責任範囲と終了条件を明示
+    - "責任範囲と終了条件を明示"
   dont:
-    - 無限責任の押し付け
+    - "無限責任の押し付け"
   guardrails:
-    - 断る支援、ヘルプ導線を確保
+    - "断る支援、ヘルプ導線を確保"
   metrics:
-    - 燃え尽き率、進行遅延数
+    - "燃え尽き率、進行遅延数"
 pairing:
   synergize_with:
     着想: "構想→実行のバランス"
