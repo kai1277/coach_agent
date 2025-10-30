@@ -1056,16 +1056,28 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     const { id } = req.params;
     const st = loopOf(id);
 
+    // データベースから最新の進捗を取得して同期
+    const sessionRow = await supabase
+      .from('sessions')
+      .select('asked_count, max_questions, metadata, summary')
+      .eq('id', id)
+      .single();
+
+    if (sessionRow.data) {
+      const dbAsked = Number(sessionRow.data.asked_count ?? 0);
+      const dbMax = Number(sessionRow.data.max_questions ?? 8);
+      // メモリとDBの進捗を同期（DBが優先）
+      if (dbAsked > st.asked) {
+        st.asked = dbAsked;
+      }
+      if (dbMax !== st.loop.maxQuestions) {
+        st.loop.maxQuestions = dbMax;
+      }
+    }
+
     // ----- 完了条件 -----
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
-      const row = await supabase
-        .from('sessions')
-        .select('metadata, summary')
-        .eq('id', id)
-        .single();
-
-      const meta = row.data?.metadata ?? {};
-      // ★ 未定義の fetchAnswerHistory ではなく、既存の fetchQAPairs を使う
+      const meta = sessionRow.data?.metadata ?? {};
       const answers = await fetchAnswerHistory(id);
 
       // ★ まとめ生成（あなたはこういう人です！ + 次の一歩）
@@ -1100,18 +1112,8 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
       });
     }
 
-    // ----- 進行中：メタ取得＆ asked 巻き上げ -----
-    const row = await supabase
-      .from('sessions')
-      .select('metadata, summary')
-      .eq('id', id)
-      .single();
-
-    const meta = row.data?.metadata ?? {};
-    const prevAsked = meta?.loop?.progressAsked;
-    if (typeof prevAsked === 'number' && prevAsked > (st.asked ?? 0)) {
-      st.asked = prevAsked;
-    }
+    // ----- 進行中：メタ取得 -----
+    const meta = sessionRow.data?.metadata ?? {};
 
     let q: { id: string; text: string; theme?: string } | null = null;
 
@@ -1202,6 +1204,10 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     const meta = (row.data.metadata ?? {}) as any;
     const prevPost = meta?.posterior ?? null;
     const newPosterior = updatePosterior(prevPost, String(answer));
+
+    // メモリ内の進捗も同期
+    const st = loopOf(id);
+    st.asked = asked_count;
 
     // 3) 収束判定
     if (asked_count >= max_questions) {
@@ -1296,11 +1302,16 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       posterior: newPosterior
     });
 
+    // フロントエンドとの互換性のため、旧形式と新形式の両方を返す
     return res.status(200).json({
       done: false,
       asked: asked_count,
       posterior: newPosterior,
-      metadata: { next_step }
+      metadata: { next_step },
+      // 旧形式（互換性）
+      question: { id: inter.question.id, text: inter.question.text },
+      progress: { asked: asked_count, max: max_questions },
+      hint: { topLabel: '', confidence: 0 },
     });
   } catch (e) {
     console.error('POST /answers error', e);

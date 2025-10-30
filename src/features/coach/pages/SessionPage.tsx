@@ -403,8 +403,12 @@ export default function SessionPage() {
       // 回答ログとセッションの最新化
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       qc.invalidateQueries({ queryKey: ["session", sessionId] });
-      if ((data as any).done)
+
+      if ((data as any).done) {
         showToast("推定が確定しました", { type: "success" });
+      }
+      // サーバーから次の質問も含めて返ってくるので、fetchNext()は不要
+      setTimeout(() => firstAnswerBtnRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
