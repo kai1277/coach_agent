@@ -835,6 +835,8 @@ app.post('/api/sessions', async (req, res) => {
       .insert({
         title: String(transcript).slice(0, 40),
         summary: null,
+        max_questions: 8,  // デフォルト8問
+        asked_count: 0,    // 初期値0
         metadata: {
           context: ctx,
           strengths_top5,
@@ -1221,8 +1223,11 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     const st = loopOf(id);
     st.asked = asked_count;
 
+    console.log(`[POST /answers] session=${id}, asked=${asked_count}, max=${max_questions}`);
+
     // 3) 収束判定
     if (asked_count >= max_questions) {
+      console.log(`[POST /answers] Reached max questions, generating conclusion...`);
       const rawPairs = await fetchQAPairs(id);
 
       // A) genPersonaAndNextSteps 用（answers 形式）
@@ -1281,6 +1286,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     }
 
     // 4) 継続：Interviewer で次の質問
+    console.log(`[POST /answers] Continuing, generating next question...`);
     const rawPairsForInterviewer = await fetchQAPairs(id);
     const qa_pairs = rawPairsForInterviewer.slice(-10).map(p => ({
       q: p.question_text,
@@ -1292,6 +1298,8 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       strengths_top5: meta?.strengths_top5 ?? [],
       demographics: meta?.demographics ?? {},
     });
+
+    console.log(`[POST /answers] Generated question: id=${inter.question.id}, text="${inter.question.text}"`);
 
     const next_step = {
       type: 'ASK',
@@ -1315,7 +1323,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     });
 
     // フロントエンドとの互換性のため、旧形式と新形式の両方を返す
-    return res.status(200).json({
+    const response = {
       done: false,
       asked: asked_count,
       posterior: newPosterior,
@@ -1324,7 +1332,9 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       question: { id: inter.question.id, text: inter.question.text },
       progress: { asked: asked_count, max: max_questions },
       hint: { topLabel: '', confidence: 0 },
-    });
+    };
+    console.log(`[POST /answers] Response:`, JSON.stringify(response, null, 2));
+    return res.status(200).json(response);
   } catch (e) {
     console.error('POST /answers error', e);
     return res.status(500).json({ error: 'internal error' });
