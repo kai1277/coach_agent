@@ -971,8 +971,8 @@ export default function SessionPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="flex h-[680px] flex-col overflow-hidden p-0">
-                <div className="border-b border-white/5 px-6 py-6">
+              <Card className="flex max-h-[680px] flex-col overflow-hidden p-0">
+                <div className="border-b border-white/5 px-6 py-6 flex-shrink-0">
                   <SectionLabel subtle>COACH</SectionLabel>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <h2 className="text-2xl font-semibold text-white">
@@ -990,7 +990,7 @@ export default function SessionPage() {
                       : "AIが次の質問を準備しています。"}
                   </CardDescription>
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-h-0 overflow-hidden">
                   <ScrollArea className="h-full px-6 py-6">
                     {turnsLoading ? (
                       <Muted>履歴を読み込んでいます…</Muted>
@@ -1057,7 +1057,7 @@ export default function SessionPage() {
                     )}
                   </ScrollArea>
                 </div>
-                <div className="border-t border-white/5 px-6 py-5">
+                <div className="border-t border-white/5 px-6 py-5 flex-shrink-0">
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
