@@ -1008,9 +1008,8 @@ export default function SessionPage() {
                     </div>
                     <form
                       className="border-t bg-white p-3 space-y-2"
-                      onSubmit={async (e) => {
+                      onSubmit={(e) => {
                         e.preventDefault();
-                        await submitCurrentAnswer(curQ?.id);
                       }}
                     >
                       <div>
@@ -1022,15 +1021,9 @@ export default function SessionPage() {
                       <textarea
                         ref={messageInputRef}
                         className="w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black min-h-[96px] resize-vertical disabled:opacity-50"
-                        placeholder="自由に回答を入力してください。Shift+Enterで改行、Enterで送信できます。"
+                        placeholder="自由に回答を入力してください。必要に応じて改行し、下のボタンから送信できます。"
                         value={answerInput}
                         onChange={(e) => setAnswerInput(e.target.value)}
-                        onKeyDown={async (e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            await submitCurrentAnswer(curQ?.id);
-                          }
-                        }}
                         disabled={loopBusy || !curQ?.id}
                       />
                       <div className="flex flex-wrap items-center gap-2">
@@ -1070,11 +1063,14 @@ export default function SessionPage() {
                       </div>
                       <div className="flex justify-end">
                         <button
-                          type="submit"
+                          type="button"
                           className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
                           disabled={loopBusy || !curQ?.id}
+                          onClick={async () => {
+                            await submitCurrentAnswer(curQ?.id);
+                          }}
                         >
-                          {loopBusy ? "送信中…" : "送信"}
+                          {loopBusy ? "送信中…" : "回答を送信"}
                         </button>
                       </div>
                     </form>
