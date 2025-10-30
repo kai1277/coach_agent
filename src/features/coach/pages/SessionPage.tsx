@@ -926,7 +926,6 @@ export default function SessionPage() {
               </CardContent>
             </Card>
           </div>
-
           <div className="space-y-6">
             {!hasSession ? (
               <Card className="min-h-[520px]">
