@@ -599,11 +599,11 @@ export default function SessionPage() {
           profile.summarizedManagement?.length) && (
           <div className="grid gap-4 sm:grid-cols-2">
             {profile.summarizedTraits?.length ? (
-              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                <div className="text-sm font-semibold text-white/90">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-sm font-semibold text-slate-800">
                   あなたの特徴（要点）
                 </div>
-                <ul className="mt-2 space-y-1 text-sm text-slate-200">
+                <ul className="mt-2 space-y-1 text-sm text-slate-600">
                   {profile.summarizedTraits.map((t, i) => (
                     <li key={i}>{t}</li>
                   ))}
@@ -611,11 +611,11 @@ export default function SessionPage() {
               </div>
             ) : null}
             {profile.summarizedManagement?.length ? (
-              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                <div className="text-sm font-semibold text-white/90">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-sm font-semibold text-slate-800">
                   効果的なマネジメント
                 </div>
-                <ul className="mt-2 space-y-1 text-sm text-slate-200">
+                <ul className="mt-2 space-y-1 text-sm text-slate-600">
                   {profile.summarizedManagement.map((m, i) => (
                     <li key={i}>{m}</li>
                   ))}
@@ -630,9 +630,9 @@ export default function SessionPage() {
             {profile.perTheme.map((t) => (
               <div
                 key={t.theme}
-                className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4"
+                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
               >
-                <div className="text-sm font-semibold text-emerald-300">
+                <div className="text-sm font-semibold text-sky-600">
                   {t.theme}
                 </div>
                 {t.traits?.length ? (
@@ -640,7 +640,7 @@ export default function SessionPage() {
                     <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
                       特徴
                     </div>
-                    <ul className="mt-2 space-y-1 text-sm text-slate-200">
+                    <ul className="mt-2 space-y-1 text-sm text-slate-600">
                       {t.traits.map((x, i) => (
                         <li key={i}>{x}</li>
                       ))}
@@ -652,7 +652,7 @@ export default function SessionPage() {
                     <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
                       マネジメント
                     </div>
-                    <ul className="mt-2 space-y-1 text-sm text-slate-200">
+                    <ul className="mt-2 space-y-1 text-sm text-slate-600">
                       {t.management.map((x, i) => (
                         <li key={i}>{x}</li>
                       ))}
@@ -685,16 +685,11 @@ export default function SessionPage() {
       : null;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[10%] top-[-180px] h-[420px] w-[420px] rounded-full bg-emerald-500/20 blur-3xl" />
-        <div className="absolute right-[-120px] top-[20%] h-[360px] w-[360px] rounded-full bg-cyan-500/15 blur-3xl" />
-        <div className="absolute bottom-[-180px] left-1/3 h-[460px] w-[460px] rounded-full bg-purple-500/15 blur-[180px]" />
-      </div>
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-12 lg:px-8">
+    <div className="min-h-screen bg-[#f5f7fb] text-slate-900">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-12 lg:px-8">
         <header className="flex flex-col gap-3 text-left">
           <SectionLabel>AI COACH LOOP</SectionLabel>
-          <h1 className="text-3xl font-semibold text-white md:text-4xl">
+          <h1 className="text-3xl font-semibold text-slate-900 md:text-4xl">
             AI Coaching Studio
           </h1>
           <Muted className="max-w-2xl">
@@ -722,17 +717,17 @@ export default function SessionPage() {
                 </CardHeader>
                 <CardContent>
                   <section className="space-y-3">
-                    <h3 className="text-sm font-semibold text-white/90">
+                    <h3 className="text-sm font-semibold text-slate-700">
                       基本属性（任意）
                     </h3>
                     <IdentityPicker value={identity} onChange={setIdentity} />
                   </section>
                   <section className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-white/90">
+                      <h3 className="text-sm font-semibold text-slate-700">
                         ストレングスTop5（最大5つ・任意）
                       </h3>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-slate-500">
                         {selected.length}/5
                       </span>
                     </div>
@@ -742,7 +737,7 @@ export default function SessionPage() {
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                     />
-                    <div className="grid max-h-56 grid-cols-2 gap-2 overflow-auto rounded-2xl border border-slate-800/60 bg-slate-900/30 p-2 sm:grid-cols-3">
+                    <div className="grid max-h-56 grid-cols-2 gap-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-2 sm:grid-cols-3">
                       {filtered.map((theme) => {
                         const checked = selected.includes(theme);
                         const disabled = !checked && !canAddMore;
@@ -752,14 +747,14 @@ export default function SessionPage() {
                             className={cn(
                               "group flex cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2 text-sm transition",
                               checked
-                                ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
-                                : "border-slate-800/40 bg-slate-900/40 text-slate-200 hover:border-emerald-400/40 hover:bg-slate-900/60",
+                                ? "border-sky-300 bg-sky-50 text-sky-700"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-slate-50",
                               disabled && !checked ? "opacity-40" : ""
                             )}
                           >
                             <input
                               type="checkbox"
-                              className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
+                              className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-300"
                               checked={checked}
                               disabled={disabled}
                               onChange={(e) => {
@@ -787,7 +782,7 @@ export default function SessionPage() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="rounded-full border border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+                            className="rounded-full border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
                             onClick={() =>
                               setSelected(selected.filter((t) => t !== s))
                             }
@@ -799,7 +794,7 @@ export default function SessionPage() {
                     )}
                   </section>
                   {create.isPending && (
-                    <div className="rounded-2xl border border-slate-800/60 bg-slate-900/30 p-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
                       <SkeletonBlock lines={4} />
                     </div>
                   )}
@@ -811,7 +806,7 @@ export default function SessionPage() {
                     </Muted>
                   )}
                 </CardContent>
-                <CardFooter className="border-t border-white/5 pt-6">
+                <CardFooter className="border-t border-slate-100 pt-6">
                   <Button
                     type="button"
                     onClick={onStart}
@@ -893,7 +888,7 @@ export default function SessionPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ul className="space-y-3 text-sm text-slate-200">
+                  <ul className="space-y-3 text-sm text-slate-600">
                     <li>
                       ・質問はAIが自動で生成し、あなたの回答に合わせて深掘りします。
                     </li>
@@ -934,16 +929,16 @@ export default function SessionPage() {
               </Card>
             ) : (
               <Card className="flex h-[680px] flex-col overflow-hidden p-0">
-                <div className="border-b border-white/5 px-6 py-4 flex-shrink-0">
+                <div className="flex-shrink-0 border-b border-slate-100 bg-white/70 px-6 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <SectionLabel subtle>COACH</SectionLabel>
-                      <h2 className="text-xl font-semibold text-white">
+                      <h2 className="text-xl font-semibold text-slate-900">
                         コーチとの対話
                       </h2>
                     </div>
                     {loopInFlight && (
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-slate-500">
                         進捗 {loopProgress.asked}/{loopProgress.max || "—"}
                       </span>
                     )}
@@ -973,23 +968,28 @@ export default function SessionPage() {
                               )}
                             >
                               {isAssistant && (
-                                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-xs font-semibold text-slate-950">
+                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-500 text-xs font-semibold text-white shadow-sm">
                                   AI
                                 </div>
                               )}
                               <div
                                 className={cn(
-                                  "max-w-[80%] rounded-3xl px-5 py-4 text-sm leading-relaxed shadow-lg transition",
+                                  "max-w-[80%] rounded-3xl px-5 py-4 text-sm leading-relaxed transition",
                                   isAssistant
-                                    ? "border border-slate-800/70 bg-slate-900/70 text-slate-100"
-                                    : "bg-emerald-500 text-slate-950"
+                                    ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-[0_18px_40px_-24px_rgba(37,99,235,0.8)]"
+                                    : "border border-slate-200 bg-white text-slate-800 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)]"
                                 )}
                               >
                                 <div className="whitespace-pre-wrap">
                                   {msg.text}
                                 </div>
                                 {msg.pending && !msg.createdAt ? (
-                                  <div className="mt-2 text-[10px] text-slate-400">
+                                  <div
+                                    className={cn(
+                                      "mt-2 text-[10px]",
+                                      isAssistant ? "text-sky-100/80" : "text-slate-400"
+                                    )}
+                                  >
                                     送信準備中…
                                   </div>
                                 ) : null}
@@ -998,8 +998,8 @@ export default function SessionPage() {
                                     className={cn(
                                       "mt-3 text-[10px]",
                                       isAssistant
-                                        ? "text-slate-400"
-                                        : "text-slate-900/70"
+                                        ? "text-sky-100/80"
+                                        : "text-slate-400"
                                     )}
                                   >
                                     {timestamp}
@@ -1007,8 +1007,8 @@ export default function SessionPage() {
                                 ) : null}
                               </div>
                               {!isAssistant && (
-                                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/80 text-xs font-semibold text-slate-950">
-                                  あなた
+                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
+                                  You
                                 </div>
                               )}
                             </div>
@@ -1019,7 +1019,7 @@ export default function SessionPage() {
                     )}
                   </ScrollArea>
                 </div>
-                <div className="border-t border-white/5 px-6 py-5 flex-shrink-0">
+                <div className="flex-shrink-0 border-t border-slate-100 bg-white/70 px-6 py-5">
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -1041,7 +1041,7 @@ export default function SessionPage() {
                       rows={5}
                     />
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <Muted className="text-xs text-slate-400">
+                      <Muted className="text-xs text-slate-500">
                         Enterキーでは送信されません。ボタンを押して回答を送信してください。
                       </Muted>
                       <Button
@@ -1104,7 +1104,7 @@ export default function SessionPage() {
                     <CardDescription>生成済みのサマリーです。</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4 text-sm leading-relaxed text-slate-100">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700 shadow-sm">
                       {safeSession.summary}
                     </div>
                   </CardContent>
@@ -1128,16 +1128,16 @@ export default function SessionPage() {
                     <CardContent className="space-y-5">
                       {isNewDone(loopState) ? (
                         <>
-                          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
-                            <div className="text-sm font-semibold text-emerald-200">
+                          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                            <div className="text-sm font-semibold text-sky-700">
                               あなたはこういう人です！
                             </div>
-                            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-50">
+                            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                               {loopState.metadata.next_step.summary}
                             </div>
                           </div>
                           <div className="space-y-3">
-                            <div className="text-sm font-semibold text-white/90">
+                            <div className="text-sm font-semibold text-slate-800">
                               やってみよう！
                             </div>
                             <div className="space-y-2">
@@ -1151,7 +1151,7 @@ export default function SessionPage() {
                                   key={`${s}-${i}`}
                                   type="button"
                                   variant="secondary"
-                                  className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
+                                  className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
                                   onClick={() => {
                                     navigator.clipboard
                                       ?.writeText(s)
@@ -1175,10 +1175,10 @@ export default function SessionPage() {
                           {loopState.metadata.next_step.management?.dont
                             ?.length ? (
                             <div className="space-y-2">
-                              <div className="text-sm font-semibold text-white/90">
+                              <div className="text-sm font-semibold text-slate-800">
                                 避けたいこと
                               </div>
-                              <ul className="space-y-1 text-sm text-slate-200">
+                              <ul className="space-y-1 text-sm text-slate-600">
                                 {loopState.metadata.next_step.management.dont.map(
                                   (d, i) => (
                                     <li key={i}>{d}</li>
@@ -1191,18 +1191,18 @@ export default function SessionPage() {
                       ) : (
                         <>
                           {(loopState as any).persona_statement && (
-                            <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
-                              <div className="text-sm font-semibold text-emerald-200">
+                            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                              <div className="text-sm font-semibold text-sky-700">
                                 あなたはこういう人です！
                               </div>
-                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-50">
+                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                                 {(loopState as any).persona_statement}
                               </div>
                             </div>
                           )}
                           <div className="space-y-3">
-                            <div className="text-sm font-semibold text-white/90">
-                              やってみよう！
+                            <div className="text-sm font-semibold text-slate-800">
+                              次のアクション候補
                             </div>
                             <div className="space-y-2">
                               {loopState.next_steps.map((s, i) => (
@@ -1210,7 +1210,7 @@ export default function SessionPage() {
                                   key={`${s}-${i}`}
                                   type="button"
                                   variant="secondary"
-                                  className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
+                                  className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
                                   onClick={() => {
                                     navigator.clipboard
                                       ?.writeText(s)
@@ -1238,17 +1238,17 @@ export default function SessionPage() {
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                             根拠の内訳
                           </div>
-                          <ul className="space-y-2 text-xs text-slate-300">
+                          <ul className="space-y-2 text-xs text-slate-500">
                             {(loopState as any).evidence.map(
                               (e: EvidenceItem, i: number) => (
                                 <li
                                   key={i}
-                                  className="rounded-xl border border-slate-800/60 bg-slate-900/40 px-3 py-2"
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
                                 >
-                                  <div className="font-medium text-slate-100">
+                                  <div className="font-medium text-slate-700">
                                     Q: {e.text}
                                   </div>
-                                  <div className="mt-1 text-xs text-slate-300">
+                                  <div className="mt-1 text-xs text-slate-500">
                                     A: {ANSWER_LABEL[e.answer]} ／ 確信度寄与:{" "}
                                     {(e.delta * 100).toFixed(1)}%
                                   </div>
@@ -1259,7 +1259,7 @@ export default function SessionPage() {
                         </div>
                       )}
                     </CardContent>
-                    <CardFooter className="border-t border-white/5 pt-6">
+                    <CardFooter className="border-t border-slate-100 pt-6">
                       <Button
                         type="button"
                         variant="outline"
