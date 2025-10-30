@@ -4,6 +4,21 @@ import { useCreateSession } from "../api/useCreateSession";
 import { STRENGTH_THEMES, type StrengthTheme } from "../constants/strengths";
 import { SkeletonBlock } from "../../../ui/Skeleton";
 import { useToast } from "../../../ui/ToastProvider";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Input,
+  Muted,
+  ScrollArea,
+  SectionLabel,
+  Textarea,
+  cn,
+} from "../../../ui/primitives";
 import { useSearchParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { useLoadSession } from "../api/useLoadSession";
@@ -18,7 +33,7 @@ import type {
 import { api } from "../../../lib/apiClient";
 import { useQueryClient } from "@tanstack/react-query";
 // import AnswerLog from "../../session/components/AnswerLog";
-// import { useTurns } from "../../session/hooks/useTurns";
+import { useTurns } from "../../session/hooks/useTurns";
 
 type LoopQuestion = { id: string; text: string };
 type Posterior = Record<
@@ -244,7 +259,7 @@ function getProgress(
 export default function SessionPage() {
   const navigate = useNavigate();
 
-  const firstAnswerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const showToast = useToast();
 
   // Top5
@@ -285,7 +300,11 @@ export default function SessionPage() {
   const { data: restored } = useLoadSession(sessionFromUrl);
 
   const qc = useQueryClient();
-  //const { data: turns = [] } = useTurns(sessionId ?? undefined);
+  const { data: turns = [], isFetching: turnsLoading } = useTurns(
+    sessionId ?? undefined
+  );
+
+  const [answerInput, setAnswerInput] = useState("");
 
   const [list, setList] = useState<
     Array<{ id: string; title?: string | null; created_at: string }>
@@ -307,9 +326,73 @@ export default function SessionPage() {
     })();
   }, [sessionId]);
 
-  const [lastTraceId, setLastTraceId] = useState<string | null>(null);
-  const [fbBusy, setFbBusy] = useState(false);
-  const [fbNote, setFbNote] = useState("");
+
+  const chatMessages = useMemo(() => {
+    const messages: Array<{
+      id: string;
+      role: "assistant" | "user";
+      text: string;
+      createdAt?: string;
+      pending?: boolean;
+      questionId?: string;
+    }> = [];
+
+    (turns ?? []).forEach((t: any) => {
+      const c = t?.content ?? {};
+      if (
+        t.role === "assistant" &&
+        c?.type === "question" &&
+        typeof c?.text === "string" &&
+        c.text.trim().length > 0
+      ) {
+        messages.push({
+          id: t.id,
+          role: "assistant",
+          text: String(c.text),
+          createdAt: t.created_at,
+          questionId: c.question_id ?? undefined,
+        });
+      } else if (t.role === "user" && c?.type === "answer") {
+        const textFromContent =
+          typeof c.answer_text === "string" && c.answer_text.trim().length > 0
+            ? c.answer_text.trim()
+            : null;
+        const labelFromChoice =
+          typeof c.answer === "string"
+            ? ANSWER_LABEL[c.answer as Answer5] ?? String(c.answer)
+            : "";
+        const msgText = textFromContent ?? labelFromChoice;
+        if (msgText) {
+          messages.push({
+            id: t.id,
+            role: "user",
+            text: msgText,
+            createdAt: t.created_at,
+            questionId: c.question_id ?? undefined,
+          });
+        }
+      }
+    });
+
+    const current = getCurrentQuestion(loopState);
+    if (
+      current?.id &&
+      !messages.some(
+        (m) => m.role === "assistant" && m.questionId === current.id
+      ) &&
+      (current.text?.trim() ?? "").length > 0
+    ) {
+      messages.push({
+        id: `pending-${current.id}`,
+        role: "assistant",
+        text: current.text ?? "",
+        pending: true,
+        questionId: current.id,
+      });
+    }
+
+    return messages;
+  }, [turns, loopState]);
 
   // 復元 → 正規化して保持
   useEffect(() => {
@@ -377,8 +460,9 @@ export default function SessionPage() {
     try {
       const data = await api.sessions.getNext(sessionId);
       setLoopState(data as any);
-      setLastTraceId((data as any)?.trace_id ?? null);
-      setTimeout(() => firstAnswerBtnRef.current?.focus(), 0);
+      setAnswerInput("");
+      qc.invalidateQueries({ queryKey: ["turns", sessionId] });
+      setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -389,17 +473,24 @@ export default function SessionPage() {
   };
 
   // 回答送信
-  const answer = async (qId: string, a: Answer5) => {
+  const answer = async ({
+    questionId,
+    text,
+  }: {
+    questionId: string;
+    text: string;
+  }) => {
     if (!sessionId) return;
     setLoopBusy(true);
     setLoopError(null);
     try {
+      const trimmed = text.trim();
       const data = await api.sessions.answer(sessionId, {
-        questionId: qId,
-        answer: a,
+        questionId,
+        answer: "UNKNOWN",
+        answerText: trimmed || undefined,
       });
       setLoopState(data as any);
-      setLastTraceId((data as any)?.trace_id ?? null);
       // 回答ログとセッションの最新化
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       qc.invalidateQueries({ queryKey: ["session", sessionId] });
@@ -408,7 +499,8 @@ export default function SessionPage() {
         showToast("推定が確定しました", { type: "success" });
       }
       // サーバーから次の質問も含めて返ってくるので、fetchNext()は不要
-      setTimeout(() => firstAnswerBtnRef.current?.focus(), 0);
+      setAnswerInput("");
+      setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -416,6 +508,19 @@ export default function SessionPage() {
     } finally {
       setLoopBusy(false);
     }
+  };
+
+  const submitCurrentAnswer = async (questionId?: string | null) => {
+    if (!questionId || loopBusy) return;
+    const trimmed = answerInput.trim();
+    if (!trimmed) {
+      showToast("回答を入力してください", { type: "info" });
+      return;
+    }
+    await answer({
+      questionId,
+      text: trimmed,
+    });
   };
 
   // 取り消し
@@ -430,6 +535,8 @@ export default function SessionPage() {
       // 取り消し後のログとセッションの最新化
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       qc.invalidateQueries({ queryKey: ["session", sessionId] });
+      setAnswerInput("");
+      setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
       setLoopError(msg);
@@ -456,6 +563,7 @@ export default function SessionPage() {
     setLoopState(null);
     setLoopError(null);
     // setRefineText("");
+    setAnswerInput("");
     setTimeToFirst(null);
     setSelected([]);
     setQuery("");
@@ -465,74 +573,18 @@ export default function SessionPage() {
     showToast("セッションをクリアしました", { type: "info" });
   };
 
-  const sendFeedback = async (kind: "up" | "down") => {
-    if (!lastTraceId) {
-      showToast("評価対象がありません（trace_idなし）", { type: "error" });
-      return;
-    }
-    setFbBusy(true);
-    try {
-      // 最小実装：fetch 直叩き（apiClient に生やしてもOK）
-      const resp = await fetch("/api/hitl/reviews", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          trace_id: lastTraceId,
-          target: "question", // 今回は質問の質に対する評価
-          reviewer: "anon", // 任意：ログインがあればユーザー名
-          comments: (kind === "up" ? "👍 " : "👎 ") + (fbNote ?? ""),
-          rubric_version: "rubric_v1.0",
-        }),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      setFbNote(""); // 送ったらメモはクリア
-      showToast("評価ありがとうございました！", { type: "success" });
-    } catch (e: any) {
-      showToast(`送信に失敗しました: ${String(e?.message || e)}`, {
-        type: "error",
-      });
-    } finally {
-      setFbBusy(false);
-    }
-  };
-
-  // キーショートカット（1..5で回答）
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!loopState || !("done" in loopState) || loopState.done) return;
-      const q = getCurrentQuestion(loopState);
-      if (!q?.id) return;
-
-      const map: Record<
-        string,
-        "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO"
-      > = {
-        "1": "YES",
-        "2": "PROB_YES",
-        "3": "UNKNOWN",
-        "4": "PROB_NO",
-        "5": "NO",
-      };
-      const a = map[e.key];
-      if (a) {
-        e.preventDefault();
-        answer(q.id, a);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [loopState]);
-
   const PersonaView = ({ profile }: { profile: StrengthProfile }) => {
     return (
-      <div className="space-y-4">
+      <div className="space-y-5">
         {(profile.summarizedTraits?.length ||
           profile.summarizedManagement?.length) && (
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             {profile.summarizedTraits?.length ? (
-              <div className="p-3 border rounded">
-                <div className="font-medium mb-1">あなたの特徴（要点）</div>
-                <ul className="list-disc pl-5">
+              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
+                <div className="text-sm font-semibold text-white/90">
+                  あなたの特徴（要点）
+                </div>
+                <ul className="mt-2 space-y-1 text-sm text-slate-200">
                   {profile.summarizedTraits.map((t, i) => (
                     <li key={i}>{t}</li>
                   ))}
@@ -540,9 +592,11 @@ export default function SessionPage() {
               </div>
             ) : null}
             {profile.summarizedManagement?.length ? (
-              <div className="p-3 border rounded">
-                <div className="font-medium mb-1">効果的なマネジメント</div>
-                <ul className="list-disc pl-5">
+              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
+                <div className="text-sm font-semibold text-white/90">
+                  効果的なマネジメント
+                </div>
+                <ul className="mt-2 space-y-1 text-sm text-slate-200">
                   {profile.summarizedManagement.map((m, i) => (
                     <li key={i}>{m}</li>
                   ))}
@@ -553,14 +607,21 @@ export default function SessionPage() {
         )}
 
         {profile.perTheme?.length ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {profile.perTheme.map((t) => (
-              <div key={t.theme} className="p-3 border rounded">
-                <div className="font-semibold mb-1">{t.theme}</div>
+              <div
+                key={t.theme}
+                className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4"
+              >
+                <div className="text-sm font-semibold text-emerald-300">
+                  {t.theme}
+                </div>
                 {t.traits?.length ? (
-                  <div className="mb-2">
-                    <div className="text-sm text-gray-600">特徴</div>
-                    <ul className="list-disc pl-5">
+                  <div className="mt-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      特徴
+                    </div>
+                    <ul className="mt-2 space-y-1 text-sm text-slate-200">
                       {t.traits.map((x, i) => (
                         <li key={i}>{x}</li>
                       ))}
@@ -568,9 +629,11 @@ export default function SessionPage() {
                   </div>
                 ) : null}
                 {t.management?.length ? (
-                  <div>
-                    <div className="text-sm text-gray-600">マネジメント</div>
-                    <ul className="list-disc pl-5">
+                  <div className="mt-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      マネジメント
+                    </div>
+                    <ul className="mt-2 space-y-1 text-sm text-slate-200">
                       {t.management.map((x, i) => (
                         <li key={i}>{x}</li>
                       ))}
@@ -587,595 +650,677 @@ export default function SessionPage() {
 
   // 以降は正規化済みのセッションを参照
   const safeSession = normalizeSession(sessionData ?? create.data ?? null);
-  const safeNextSteps =
-    safeSession.next_steps ?? safeSession.plan?.next_steps ?? [];
   const personaSafe = safeSession.persona;
+  const hasSession = Boolean(sessionId);
+  const currentQuestion = getCurrentQuestion(loopState);
+  const loopProgress = hasSession
+    ? getProgress(loopState, safeSession.loop?.maxQuestions ?? 0)
+    : { asked: 0, max: safeSession.loop?.maxQuestions ?? 0 };
+  const loopInFlight =
+    loopStarted &&
+    loopState &&
+    "done" in loopState &&
+    loopState.done === false;
+  const loopFinished =
+    loopStarted &&
+    loopState &&
+    "done" in loopState &&
+    loopState.done === true;
+  const loopHeadline =
+    loopFinished && typeof (loopState as any)?.headline === "string"
+      ? (loopState as any)?.headline
+      : null;
 
   return (
-    <div className="mx-auto max-w-3xl p-4 space-y-6">
-      <h1 className="text-2xl font-bold">
-        Coach セッション (MVP){" "}
-        <span title="Top5→軽い事前確率→質問で更新→確信度で確定">ℹ️</span>
-      </h1>
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-[10%] top-[-180px] h-[420px] w-[420px] rounded-full bg-emerald-500/20 blur-3xl" />
+        <div className="absolute right-[-120px] top-[20%] h-[360px] w-[360px] rounded-full bg-cyan-500/15 blur-3xl" />
+        <div className="absolute bottom-[-180px] left-1/3 h-[460px] w-[460px] rounded-full bg-purple-500/15 blur-[180px]" />
+      </div>
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-12 lg:px-8">
+        <header className="flex flex-col gap-3 text-left">
+          <SectionLabel>AI COACH LOOP</SectionLabel>
+          <h1 className="text-3xl font-semibold text-white md:text-4xl">
+            AI Coaching Studio
+          </h1>
+          <Muted className="max-w-2xl">
+            Strengthsベースの質問ループで、あなたの強みや次の一歩をAIコーチが伴走します。
+          </Muted>
+        </header>
 
-      {/* ===== 初期入力 ===== */}
-      {!sessionId && (
-        <div className="space-y-3" aria-busy={create.isPending}>
-          <section className="space-y-2">
-            <h2 className="font-medium">基本属性（任意）</h2>
-            <IdentityPicker value={identity} onChange={setIdentity} />
-          </section>
-
-          {/* Top5 選択 */}
-          <div className="space-y-2">
-            <div className="flex items-end justify-between gap-2">
-              <label className="font-medium">
-                ストレングスTop5（最大5つまで・任意）
-              </label>
-              <div className="text-sm text-gray-600">
-                {selected.length}/5 選択
-              </div>
-            </div>
-            <input
-              aria-label="資質検索"
-              className="w-full rounded border p-2"
-              placeholder="資質名で絞り込み（例：戦略性）"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-auto border rounded p-2">
-              {filtered.map((theme) => {
-                const checked = selected.includes(theme);
-                const disabled = !checked && !canAddMore;
-                return (
-                  <label
-                    key={theme}
-                    className={`flex items-center gap-2 ${
-                      disabled ? "opacity-50" : ""
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={disabled}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          if (selected.length < 5)
-                            setSelected([...selected, theme]);
-                        } else {
-                          setSelected(selected.filter((t) => t !== theme));
-                        }
-                      }}
+        <div
+          className={cn(
+            "grid gap-6",
+            hasSession
+              ? "xl:grid-cols-[320px_minmax(0,1fr)_320px]"
+              : "lg:grid-cols-[minmax(0,1fr)_360px]"
+          )}
+        >
+          <div className="space-y-6">
+            {!hasSession ? (
+              <Card>
+                <CardHeader>
+                  <SectionLabel subtle>STEP 1</SectionLabel>
+                  <CardTitle>プロフィールをセットアップ</CardTitle>
+                  <CardDescription>
+                    強みや基本属性を入力すると、最適な問いからコーチングが始まります。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <section className="space-y-3">
+                    <h3 className="text-sm font-semibold text-white/90">
+                      基本属性（任意）
+                    </h3>
+                    <IdentityPicker value={identity} onChange={setIdentity} />
+                  </section>
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-white/90">
+                        ストレングスTop5（最大5つ・任意）
+                      </h3>
+                      <span className="text-xs text-slate-400">
+                        {selected.length}/5
+                      </span>
+                    </div>
+                    <Input
+                      aria-label="資質検索"
+                      placeholder="資質名で絞り込み（例：戦略性）"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
                     />
-                    <span>{theme}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {!!selected.length && (
-              <div className="flex flex-wrap gap-2">
-                {selected.map((s) => (
-                  <button
-                    key={s}
-                    className="px-2 py-1 rounded border"
-                    onClick={() => setSelected(selected.filter((t) => t !== s))}
-                  >
-                    {s} ×
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              aria-label="セッション開始"
-              className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
-              disabled={create.isPending}
-              onClick={onStart}
-            >
-              {create.isPending ? "生成中…" : "開始"}
-            </button>
-          </div>
-
-          {create.isPending && (
-            <div className="mt-2">
-              <SkeletonBlock lines={4} />
-            </div>
-          )}
-
-          {create.isError && (
-            <pre className="text-sm text-red-600">
-              {String((create.error as any)?.message || "エラーが発生しました")}
-            </pre>
-          )}
-        </div>
-      )}
-
-      {/* 最近のセッション */}
-      {!sessionId && (
-        <section className="space-y-2">
-          <h2 className="text-xl font-semibold">最近のセッション</h2>
-
-          {!Array.isArray(list) || list.length === 0 ? (
-            <div className="text-sm text-gray-500">まだありません</div>
-          ) : (
-            <ul className="space-y-2">
-              {list.map((s) => (
-                <li
-                  key={s.id}
-                  className="p-2 border rounded flex items-center justify-between"
-                >
-                  <div>
-                    <div className="font-medium">{s.title || "(no title)"}</div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(s.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      className="underline text-sm"
-                      onClick={() => navigate(`/app/coach?session=${s.id}`)}
-                    >
-                      開く
-                    </button>
-                    <button
-                      className="text-red-600 underline text-sm"
-                      onClick={async () => {
-                        if (!confirm("削除しますか？")) return;
-                        await api.sessions.remove(s.id);
-                        setList((prev) =>
-                          Array.isArray(prev)
-                            ? prev.filter((x) => x.id !== s.id)
-                            : []
+                    <div className="grid max-h-56 grid-cols-2 gap-2 overflow-auto rounded-2xl border border-slate-800/60 bg-slate-900/30 p-2 sm:grid-cols-3">
+                      {filtered.map((theme) => {
+                        const checked = selected.includes(theme);
+                        const disabled = !checked && !canAddMore;
+                        return (
+                          <label
+                            key={theme}
+                            className={cn(
+                              "group flex cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2 text-sm transition",
+                              checked
+                                ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
+                                : "border-slate-800/40 bg-slate-900/40 text-slate-200 hover:border-emerald-400/40 hover:bg-slate-900/60",
+                              disabled && !checked ? "opacity-40" : ""
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
+                              checked={checked}
+                              disabled={disabled}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  if (selected.length < 5) {
+                                    setSelected([...selected, theme]);
+                                  }
+                                } else {
+                                  setSelected(
+                                    selected.filter((t) => t !== theme)
+                                  );
+                                }
+                              }}
+                            />
+                            <span>{theme}</span>
+                          </label>
                         );
-                        if (sessionId === s.id) resetAll();
-                      }}
-                    >
-                      削除
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* ===== 初回結果 ===== */}
-      {sessionId && (sessionData || create.data) && (
-        <div className="space-y-4">
-          <div className="text-sm text-gray-600">
-            セッションID: <code>{sessionId}</code>
-            {timeToFirst !== null && <span> / 初回出力: {timeToFirst} ms</span>}
-            <button
-              className="ml-2 px-2 py-1 border rounded text-xs hover:bg-gray-50"
-              onClick={() => {
-                if (!sessionId) return;
-                const url = `${window.location.origin}/app/coach?session=${sessionId}`;
-                navigator.clipboard.writeText(url).then(
-                  () =>
-                    showToast("共有リンクをコピーしました", {
-                      type: "success",
-                    }),
-                  () =>
-                    (window as any).prompt?.(
-                      "以下のURLを手動でコピーしてください。",
-                      url
-                    )
-                );
-              }}
-              disabled={!sessionId}
-              aria-label="共有リンクをコピー"
-            >
-              共有リンクをコピー
-            </button>
-          </div>
-
-          {/* 要約（サーバ永続） */}
-          {sessionId && safeSession.summary?.trim() && (
-            <section className="space-y-2">
-              <h2 className="text-xl font-semibold">要約</h2>
-              <div className="rounded border p-3 whitespace-pre-wrap">
-                {safeSession.summary}
-              </div>
-            </section>
-          )}
-
-          {/* 次の一歩 */}
-          {/*
-          <section className="space-y-2">
-            <h2 className="text-xl font-semibold">次の一歩</h2>
-            <ul className="pl-0">
-              {safeNextSteps.map((s: string, i: number) => (
-                <li key={i} className="list-none">
-                  <button
-                    className="underline rounded px-1 py-0.5 hover:bg-gray-100"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(s).then(
-                        () => showToast("コピーしました", { type: "success" }),
-                        () =>
-                          showToast("コピーできませんでした", { type: "error" })
-                      );
-                    }}
-                    aria-label={`次の一歩をコピー：${s}`}
-                  >
-                    {s}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-          */}
-
-          {/* 回答履歴（turns） */}
-          {/*
-          {turns.length === 0 ? (
-            <div className="text-sm text-gray-500">まだ回答はありません</div>
-          ) : (
-            <AnswerLog turns={turns} />
-          )}
-          */}
-        </div>
-      )}
-
-      {/* ストレングス（ベータ） */}
-      {sessionId && (sessionData || create.data) && personaSafe && (
-        <section className="space-y-2">
-          <h2 className="text-xl font-semibold">ストレングス（ベータ）</h2>
-          <PersonaView profile={personaSafe} />
-        </section>
-      )}
-
-      {/* 追加指示 */}
-      {/*
-      {sessionId && (
-        <section className="space-y-2">
-          <h3 className="font-medium">
-            追加の指示で更新{" "}
-            <span title="要約の先頭に【更新】を追記し、次の一歩の先頭を差し替えます">
-              ℹ️
-            </span>
-          </h3>
-          <div className="flex gap-2">
-            <input
-              aria-label="追加指示"
-              className="flex-1 rounded border p-2"
-              placeholder="例：面接準備向けにSTARで要約して"
-              value={refineText}
-              onChange={(e) => setRefineText(e.target.value)}
-            />
-            <button
-              aria-label="更新を送信"
-              className="rounded border px-3 py-2"
-              onClick={async () => {
-                try {
-                  const s = await advance.mutateAsync(refineText);
-                  const norm = normalizeSession(s as any);
-                  setSessionData(norm as any);
-                  setRefineText("");
-                  showToast("更新しました", { type: "success" });
-                  if (sessionId) {
-                    qc.invalidateQueries({ queryKey: ["session", sessionId] });
-                    qc.invalidateQueries({ queryKey: ["turns", sessionId] });
-                  }
-                } catch {}
-              }}
-              disabled={advance.isPending || !refineText}
-            >
-              {advance.isPending ? "送信中…" : "更新"}
-            </button>
-            <button
-              aria-label="クリア"
-              className="rounded border px-3 py-2"
-              onClick={resetAll}
-            >
-              クリア
-            </button>
-          </div>
-          {advance.isError && (
-            <pre className="text-red-600 text-sm">
-              {String((advance.error as any)?.message || "更新に失敗しました")}
-            </pre>
-          )}
-        </section>
-      )}
-      */}
-
-      {/* タイプ推定（ベータ） */}
-      {sessionId && (
-        <section className="space-y-4 border rounded p-3" aria-live="polite">
-          {!loopStarted && (
-            <button
-              className="rounded bg-black text-white px-4 py-2"
-              onClick={async () => {
-                setLoopStarted(true);
-                await fetchNext(); // 初手＝統合初期質問が出る
-              }}
-            >
-              診断を開始
-            </button>
-          )}
-
-          {loopStarted &&
-            loopState &&
-            "done" in loopState &&
-            loopState.done === false &&
-            (() => {
-              const prog = getProgress(
-                loopState,
-                safeSession.loop?.maxQuestions ?? 0
-              );
-              const curQ = getCurrentQuestion(loopState);
-
-              return (
-                <div className="space-y-3" aria-busy={loopBusy}>
-                  <div className="text-sm text-gray-600">
-                    進捗: {prog.asked}/{prog.max || "—"}
-                  </div>
-
-                  <div className="p-3 rounded border">
-                    <div className="font-medium mb-2">
-                      Q: {curQ?.text || "（取得中）"}
+                      })}
                     </div>
-                    <div className="text-xs text-gray-500 mb-1">
-                      ※ キー操作: 1=はい / 2=たぶんはい / 3=わからない /
-                      4=たぶんいいえ / 5=いいえ
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {(
-                        [
-                          { k: "YES", label: "はい" },
-                          { k: "PROB_YES", label: "たぶんはい" },
-                          { k: "UNKNOWN", label: "わからない" },
-                          { k: "PROB_NO", label: "たぶんいいえ" },
-                          { k: "NO", label: "いいえ" },
-                        ] as const
-                      ).map((opt, idx) => (
-                        <button
-                          key={opt.k}
-                          ref={idx === 0 ? firstAnswerBtnRef : undefined}
-                          disabled={loopBusy || !curQ?.id}
-                          className="rounded border px-3 py-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-black"
-                          onClick={() =>
-                            curQ?.id && answer(curQ.id, opt.k as any)
-                          }
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* === 質問に対するワンクリック評価（一旦非表示） === */}
-                  {false && (
-                    <>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-sm text-gray-600">
-                          この質問は役に立ちましたか？
-                        </span>
-                        <button
-                          className="px-2 py-1 rounded border disabled:opacity-50"
-                          disabled={!lastTraceId || fbBusy}
-                          onClick={() => sendFeedback("up")}
-                          title="役に立った"
-                        >
-                          👍 良い
-                        </button>
-                        <button
-                          className="px-2 py-1 rounded border disabled:opacity-50"
-                          disabled={!lastTraceId || fbBusy}
-                          onClick={() => sendFeedback("down")}
-                          title="役に立たない／改善してほしい"
-                        >
-                          👎 微妙
-                        </button>
+                    {!!selected.length && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {selected.map((s) => (
+                          <Button
+                            key={s}
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="rounded-full border border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+                            onClick={() =>
+                              setSelected(selected.filter((t) => t !== s))
+                            }
+                          >
+                            {s} ×
+                          </Button>
+                        ))}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <input
-                          className="flex-1 rounded border p-2 text-sm"
-                          placeholder="任意メモ（なぜ良い/悪い？改善案など）"
-                          value={fbNote}
-                          onChange={(e) => setFbNote(e.target.value)}
-                          disabled={!lastTraceId || fbBusy}
-                        />
-                        <button
-                          className="px-3 py-1 rounded border text-sm disabled:opacity-50"
-                          disabled={!lastTraceId || fbBusy || !fbNote.trim()}
-                          onClick={() => sendFeedback("down")}
-                          title="メモ付きで送信（改善要望など）"
-                        >
-                          送信
-                        </button>
-                      </div>
-                    </>
+                    )}
+                  </section>
+                  {create.isPending && (
+                    <div className="rounded-2xl border border-slate-800/60 bg-slate-900/30 p-4">
+                      <SkeletonBlock lines={4} />
+                    </div>
                   )}
+                  {create.isError && (
+                    <Muted className="text-rose-400">
+                      {String(
+                        (create.error as any)?.message || "エラーが発生しました"
+                      )}
+                    </Muted>
+                  )}
+                </CardContent>
+                <CardFooter className="border-t border-white/5 pt-6">
+                  <Button
+                    type="button"
+                    onClick={onStart}
+                    disabled={create.isPending}
+                    className="min-w-[180px]"
+                  >
+                    {create.isPending ? "生成中…" : "セッションを開始"}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <SectionLabel subtle>SESSION</SectionLabel>
+                  <CardTitle>現在のセッション</CardTitle>
+                  <CardDescription>
+                    AIコーチとの対話を進めています。リンクを共有して続きを確認できます。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4">
+                    <div className="text-xs uppercase tracking-wide text-slate-400">
+                      Session ID
+                    </div>
+                    <div className="mt-2 font-mono text-sm text-emerald-200">
+                      {sessionId}
+                    </div>
+                    {timeToFirst !== null && (
+                      <div className="mt-2 text-xs text-slate-400">
+                        初回出力: {timeToFirst} ms
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+                <CardFooter className="border-t border-white/5 pt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (!sessionId) return;
+                      const url = `${window.location.origin}/app/coach?session=${sessionId}`;
+                      navigator.clipboard
+                        .writeText(url)
+                        .then(() =>
+                          showToast("共有リンクをコピーしました", {
+                            type: "success",
+                          })
+                        )
+                        .catch(() => {
+                          (window as any).prompt?.(
+                            "以下のURLを手動でコピーしてください。",
+                            url
+                          );
+                        });
+                    }}
+                  >
+                    共有リンクをコピー
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={resetAll}
+                    className="text-slate-300 hover:text-white"
+                  >
+                    新しいセッションを開始
+                  </Button>
+                </CardFooter>
+              </Card>
+            )}
+            <Card>
+              <CardHeader>
+                <SectionLabel subtle>履歴</SectionLabel>
+                <CardTitle>最近のセッション</CardTitle>
+                <CardDescription>直近20件のセッションを参照できます。</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!Array.isArray(list) || list.length === 0 ? (
+                  <Muted>まだセッションはありません。</Muted>
+                ) : (
+                  <div className="space-y-3">
+                    {list.map((s) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-900/40 px-4 py-3 text-sm"
+                      >
+                        <div>
+                          <div className="font-medium text-slate-100">
+                            {s.title || "(no title)"}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {new Date(s.created_at).toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => navigate(`/app/coach?session=${s.id}`)}
+                          >
+                            開く
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={async () => {
+                              if (!confirm("削除しますか？")) return;
+                              await api.sessions.remove(s.id);
+                              setList((prev) =>
+                                Array.isArray(prev)
+                                  ? prev.filter((x) => x.id !== s.id)
+                                  : []
+                              );
+                              if (sessionId === s.id) resetAll();
+                            }}
+                          >
+                            削除
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      className="rounded border px-3 py-2"
+          <div className="space-y-6">
+            {!hasSession ? (
+              <Card className="min-h-[520px]">
+                <CardHeader>
+                  <SectionLabel subtle>PREVIEW</SectionLabel>
+                  <CardTitle>AIコーチと対話しましょう</CardTitle>
+                  <CardDescription>
+                    左のフォームからセッションを開始すると、ChatGPTのような体験で質問と回答が交互に表示されます。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-3 text-sm text-slate-200">
+                    <li>・質問はAIが自動で生成し、あなたの回答に合わせて深掘りします。</li>
+                    <li>・回答はチャット欄に入力し、「回答を送信」ボタンで送信します。</li>
+                    <li>・診断が完了すると、次の一歩の提案やペルソナの要約が表示されます。</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            ) : !loopStarted ? (
+              <Card className="min-h-[360px]">
+                <CardHeader>
+                  <SectionLabel subtle>COACH</SectionLabel>
+                  <CardTitle>診断を開始できます</CardTitle>
+                  <CardDescription>
+                    ボタンを押すとAIが最初の質問を生成し、チャット形式でのコーチングが始まります。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <Muted>
+                    セッションはいつでも再開・再生成できます。準備が整ったら以下のボタンを押してください。
+                  </Muted>
+                  <Button
+                    type="button"
+                    size="lg"
+                    onClick={async () => {
+                      setLoopStarted(true);
+                      await fetchNext();
+                    }}
+                    className="w-full sm:w-auto"
+                  >
+                    診断を開始
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="flex h-[680px] flex-col overflow-hidden p-0">
+                <div className="border-b border-white/5 px-6 py-6">
+                  <SectionLabel subtle>COACH</SectionLabel>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <h2 className="text-2xl font-semibold text-white">
+                      コーチとの対話
+                    </h2>
+                    {loopInFlight && (
+                      <span className="text-xs text-slate-400">
+                        進捗 {loopProgress.asked}/{loopProgress.max || "—"}
+                      </span>
+                    )}
+                  </div>
+                  <CardDescription className="mt-2">
+                    {currentQuestion?.text
+                      ? currentQuestion.text
+                      : "AIが次の質問を準備しています。"}
+                  </CardDescription>
+                </div>
+                <div className="flex-1">
+                  <ScrollArea className="h-full px-6 py-6">
+                    {turnsLoading ? (
+                      <Muted>履歴を読み込んでいます…</Muted>
+                    ) : chatMessages.length === 0 ? (
+                      <Muted>
+                        最初の質問を準備しています。少々お待ちください。
+                      </Muted>
+                    ) : (
+                      <div className="space-y-6">
+                        {chatMessages.map((msg) => {
+                          const isAssistant = msg.role === "assistant";
+                          const timestamp =
+                            msg.createdAt &&
+                            new Date(msg.createdAt).toLocaleTimeString();
+                          return (
+                            <div
+                              key={msg.id}
+                              className={cn(
+                                "flex gap-3",
+                                isAssistant ? "justify-start" : "justify-end"
+                              )}
+                            >
+                              {isAssistant && (
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-xs font-semibold text-slate-950">
+                                  AI
+                                </div>
+                              )}
+                              <div
+                                className={cn(
+                                  "max-w-[80%] rounded-3xl px-5 py-4 text-sm leading-relaxed shadow-lg transition",
+                                  isAssistant
+                                    ? "border border-slate-800/70 bg-slate-900/70 text-slate-100"
+                                    : "bg-emerald-500 text-slate-950"
+                                )}
+                              >
+                                <div className="whitespace-pre-wrap">{msg.text}</div>
+                                {msg.pending && !msg.createdAt ? (
+                                  <div className="mt-2 text-[10px] text-slate-400">
+                                    送信準備中…
+                                  </div>
+                                ) : null}
+                                {timestamp ? (
+                                  <div
+                                    className={cn(
+                                      "mt-3 text-[10px]",
+                                      isAssistant
+                                        ? "text-slate-400"
+                                        : "text-slate-900/70"
+                                    )}
+                                  >
+                                    {timestamp}
+                                  </div>
+                                ) : null}
+                              </div>
+                              {!isAssistant && (
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/80 text-xs font-semibold text-slate-950">
+                                  あなた
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+                <div className="border-t border-white/5 px-6 py-5">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                    }}
+                    className="space-y-4"
+                  >
+                    <Textarea
+                      ref={messageInputRef}
+                      placeholder={
+                        currentQuestion?.text
+                          ? `${currentQuestion.text}\n\n思いついたことを自由に教えてください。`
+                          : "質問を取得しています…"
+                      }
+                      value={answerInput}
+                      onChange={(e) => setAnswerInput(e.target.value)}
+                      disabled={loopBusy || !currentQuestion?.id}
+                      rows={5}
+                    />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <Muted className="text-xs text-slate-400">
+                        Enterキーでは送信されません。ボタンを押して回答を送信してください。
+                      </Muted>
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          await submitCurrentAnswer(currentQuestion?.id);
+                        }}
+                        disabled={loopBusy || !currentQuestion?.id}
+                        className="w-full sm:w-auto"
+                      >
+                        {loopBusy ? "送信中…" : "回答を送信"}
+                      </Button>
+                    </div>
+                  </form>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
                       disabled={loopBusy}
                       onClick={fetchNext}
                     >
                       次の質問を取得
-                    </button>
-                    <button
-                      className="rounded border px-3 py-2"
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
                       disabled={loopBusy}
                       onClick={undo}
                     >
                       直前の回答を取り消す
-                    </button>
-                    <button
-                      className="rounded border px-3 py-1"
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
                       onClick={() =>
                         qc.invalidateQueries({ queryKey: ["turns", sessionId] })
                       }
                     >
-                      ログの再読み込み
-                    </button>
+                      ログを再読み込み
+                    </Button>
                   </div>
-
                   {loopError && (
-                    <div className="text-sm text-red-600">{loopError}</div>
+                    <Muted className="mt-3 text-rose-400">{loopError}</Muted>
                   )}
                 </div>
-              );
-            })()}
+              </Card>
+            )}
+          </div>
 
-          {loopStarted &&
-            loopState &&
-            "done" in loopState &&
-            loopState.done === true && (
-              <div className="space-y-3">
-                {(loopState as any).headline && (
-                  <div className="text-lg font-semibold">
-                    {(loopState as any).headline}
-                  </div>
-                )}
-
-                {/* 新形式（CONCLUDE）：metadata.next_step を優先表示 */}
-                {isNewDone(loopState) ? (
-                  <>
-                    <section className="space-y-3">
-                      <div className="text-lg font-semibold">
-                        あなたはこういう人です！
-                      </div>
-                      <div className="whitespace-pre-wrap rounded-xl bg-white/80 px-5 py-4 leading-relaxed shadow-sm">
-                        {loopState.metadata.next_step.summary}
-                      </div>
-                    </section>
-
-                    <div className="space-y-3">
-                      <div className="text-lg font-semibold">やってみよう！</div>
-                      <ul className="pl-0 space-y-3">
-                        {(loopState.metadata.next_step.next_week_plan?.length
-                          ? loopState.metadata.next_step.next_week_plan
-                          : loopState.metadata.next_step.management?.do || []
-                        ).map((s, i) => (
-                          <li key={i} className="list-none">
-                            <button
-                              className="w-full text-left rounded-xl bg-white/80 px-5 py-3 text-base shadow-sm transition hover:bg-white"
-                              onClick={() => {
-                                navigator.clipboard?.writeText(s).then(
-                                  () =>
-                                    showToast("コピーしました", {
-                                      type: "success",
-                                    }),
-                                  () =>
-                                    showToast("コピーできませんでした", {
-                                      type: "error",
-                                    })
-                                );
-                              }}
-                            >
-                              {s}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+          {hasSession && (
+            <div className="space-y-6">
+              {safeSession.summary?.trim() && (
+                <Card>
+                  <CardHeader>
+                    <SectionLabel subtle>SUMMARY</SectionLabel>
+                    <CardTitle>セッション要約</CardTitle>
+                    <CardDescription>生成済みのサマリーです。</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4 text-sm leading-relaxed text-slate-100">
+                      {safeSession.summary}
                     </div>
+                  </CardContent>
+                </Card>
+              )}
 
-                    {loopState.metadata.next_step.management?.dont?.length ? (
-                      <div className="space-y-3">
-                        <div className="text-lg font-semibold">避けたいこと</div>
-                        <ul className="list-disc pl-6 text-sm leading-relaxed">
-                          {loopState.metadata.next_step.management.dont.map(
-                            (d, i) => (
-                              <li key={i}>{d}</li>
+              {loopFinished && loopState && "done" in loopState && loopState.done === true && (
+                <Card aria-live="polite">
+                  <CardHeader>
+                    <SectionLabel subtle>INSIGHT</SectionLabel>
+                    <CardTitle>{loopHeadline || "AIコーチのまとめ"}</CardTitle>
+                    <CardDescription>
+                      診断が完了しました。コーチからの提案です。
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    {isNewDone(loopState) ? (
+                      <>
+                        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
+                          <div className="text-sm font-semibold text-emerald-200">
+                            あなたはこういう人です！
+                          </div>
+                          <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-50">
+                            {loopState.metadata.next_step.summary}
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="text-sm font-semibold text-white/90">
+                            やってみよう！
+                          </div>
+                          <div className="space-y-2">
+                            {(loopState.metadata.next_step.next_week_plan?.length
+                              ? loopState.metadata.next_step.next_week_plan
+                              : loopState.metadata.next_step.management?.do || []
+                            ).map((s, i) => (
+                              <Button
+                                key={`${s}-${i}`}
+                                type="button"
+                                variant="secondary"
+                                className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
+                                onClick={() => {
+                                  navigator.clipboard
+                                    ?.writeText(s)
+                                    .then(() =>
+                                      showToast("コピーしました", {
+                                        type: "success",
+                                      })
+                                    )
+                                    .catch(() =>
+                                      showToast("コピーできませんでした", {
+                                        type: "error",
+                                      })
+                                    );
+                                }}
+                              >
+                                {s}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                        {loopState.metadata.next_step.management?.dont?.length ? (
+                          <div className="space-y-2">
+                            <div className="text-sm font-semibold text-white/90">
+                              避けたいこと
+                            </div>
+                            <ul className="space-y-1 text-sm text-slate-200">
+                              {loopState.metadata.next_step.management.dont.map((d, i) => (
+                                <li key={i}>{d}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        {(loopState as any).persona_statement && (
+                          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
+                            <div className="text-sm font-semibold text-emerald-200">
+                              あなたはこういう人です！
+                            </div>
+                            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-50">
+                              {(loopState as any).persona_statement}
+                            </div>
+                          </div>
+                        )}
+                        <div className="space-y-3">
+                          <div className="text-sm font-semibold text-white/90">
+                            やってみよう！
+                          </div>
+                          <div className="space-y-2">
+                            {loopState.next_steps.map((s, i) => (
+                              <Button
+                                key={`${s}-${i}`}
+                                type="button"
+                                variant="secondary"
+                                className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
+                                onClick={() => {
+                                  navigator.clipboard
+                                    ?.writeText(s)
+                                    .then(() =>
+                                      showToast("コピーしました", {
+                                        type: "success",
+                                      })
+                                    )
+                                    .catch(() =>
+                                      showToast("コピーできませんでした", {
+                                        type: "error",
+                                      })
+                                    );
+                                }}
+                              >
+                                {s}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    {(loopState as any).evidence?.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          根拠の内訳
+                        </div>
+                        <ul className="space-y-2 text-xs text-slate-300">
+                          {(loopState as any).evidence.map(
+                            (e: EvidenceItem, i: number) => (
+                              <li
+                                key={i}
+                                className="rounded-xl border border-slate-800/60 bg-slate-900/40 px-3 py-2"
+                              >
+                                <div className="font-medium text-slate-100">
+                                  Q: {e.text}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-300">
+                                  A: {ANSWER_LABEL[e.answer]} ／ 確信度寄与: {(e.delta * 100).toFixed(1)}%
+                                </div>
+                              </li>
                             )
                           )}
                         </ul>
                       </div>
-                    ) : null}
-                  </>
-                ) : (
-                  // 旧形式（互換）：persona_statement / next_steps
-                  <>
-                    {(loopState as any).persona_statement && (
-                      <section className="space-y-3">
-                        <div className="text-lg font-semibold">
-                          あなたはこういう人です！
-                        </div>
-                        <div className="whitespace-pre-wrap rounded-xl bg-white/80 px-5 py-4 leading-relaxed shadow-sm">
-                          {(loopState as any).persona_statement}
-                        </div>
-                      </section>
                     )}
+                  </CardContent>
+                  <CardFooter className="border-t border-white/5 pt-6">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setLoopStarted(false);
+                        setLoopState(null);
+                      }}
+                    >
+                      もう一度診断する
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={resetAll}>
+                      セッションを終了
+                    </Button>
+                  </CardFooter>
+                </Card>
+              )}
 
-                    <div className="space-y-3">
-                      <div className="text-lg font-semibold">やってみよう！</div>
-                      <ul className="pl-0 space-y-3">
-                        {loopState.next_steps.map((s, i) => (
-                          <li key={i} className="list-none">
-                            <button
-                              className="w-full text-left rounded-xl bg-white/80 px-5 py-3 text-base shadow-sm transition hover:bg-white"
-                              onClick={() => {
-                                navigator.clipboard?.writeText(s).then(
-                                  () =>
-                                    showToast("コピーしました", {
-                                      type: "success",
-                                    }),
-                                  () =>
-                                    showToast("コピーできませんでした", {
-                                      type: "error",
-                                    })
-                                );
-                              }}
-                            >
-                              {s}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </>
-                )}
-
-                {/* 旧形式の根拠表示（互換表示） */}
-                {(loopState as any).evidence?.length > 0 && (
-                  <div className="space-y-1">
-                    <div className="font-medium">
-                      根拠の内訳（影響が大きかった回答）
-                    </div>
-                    <ul className="list-disc pl-6 text-sm">
-                      {(loopState as any).evidence.map(
-                        (e: EvidenceItem, i: number) => (
-                          <li key={i}>
-                            <span className="font-medium">Q:</span> {e.text} ／
-                            <span className="font-medium">A:</span>{" "}
-                            {ANSWER_LABEL[e.answer]} ／
-                            <span className="text-gray-600">
-                              確信度寄与: {(e.delta * 100).toFixed(1)}%
-                            </span>
-                          </li>
-                        )
-                      )}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    className="rounded border px-3 py-2"
-                    onClick={() => {
-                      setLoopStarted(false);
-                      setLoopState(null);
-                    }}
-                  >
-                    もう一度診断する
-                  </button>
-                  <button
-                    className="rounded border px-3 py-2"
-                    onClick={resetAll}
-                  >
-                    セッションを終了
-                  </button>
-                </div>
-              </div>
-            )}
-        </section>
-      )}
+              {personaSafe && (
+                <Card>
+                  <CardHeader>
+                    <SectionLabel subtle>STRENGTHS</SectionLabel>
+                    <CardTitle>ストレングス プロファイル</CardTitle>
+                    <CardDescription>
+                      生成されたストレングスの解釈です。
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <PersonaView profile={personaSafe} />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

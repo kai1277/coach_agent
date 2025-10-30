@@ -556,6 +556,7 @@ async function fetchAnswerHistory(session_id: string) {
   return data.map(r => ({
     question_id: (r as any)?.content?.question_id ?? null,
     answer: (r as any)?.content?.answer ?? null,
+    answer_text: (r as any)?.content?.answer_text ?? null,
   }));
 }
 
@@ -564,7 +565,11 @@ async function fetchAnswerHistory(session_id: string) {
 async function genPersonaAndNextSteps(opts: {
   strengths_top5?: string[];
   demographics?: Record<string, any>;
-  answers: Array<{ question_id: string | null; answer: string | null }>;
+  answers: Array<{
+    question_id: string | null;
+    answer: string | null;
+    answer_text?: string | null;
+  }>;
 }): Promise<{ persona_statement: string; next_steps: string[] }> {
   const { strengths_top5 = [], demographics = {}, answers = [] } = opts;
 
@@ -1199,14 +1204,28 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 app.post('/api/sessions/:id/answers', async (req, res) => {
   try {
     const { id } = req.params;
-    const { questionId, answer } = req.body ?? {};
+    const { questionId, answer, answerText } = req.body ?? {};
     if (!questionId) return sendErr(res, 400, 'questionId is required');
+
+    const normalizedAnswer =
+      typeof answer === 'string' && answer.trim().length > 0
+        ? String(answer)
+        : 'UNKNOWN';
+    const normalizedText =
+      typeof answerText === 'string' && answerText.trim().length > 0
+        ? answerText.trim()
+        : null;
 
     // 1) 回答を保存
     await supabase.from('turns').insert({
       session_id: id,
       role: 'user',
-      content: { type: 'answer', question_id: questionId, answer },
+      content: {
+        type: 'answer',
+        question_id: questionId,
+        answer: normalizedAnswer,
+        answer_text: normalizedText,
+      },
     });
 
     // 2) 確率（暫定）更新を turn にも保存
@@ -1217,7 +1236,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     const max_questions = Number(row.data.max_questions ?? 8);
     const meta = (row.data.metadata ?? {}) as any;
     const prevPost = meta?.posterior ?? null;
-    const newPosterior = updatePosterior(prevPost, String(answer));
+    const newPosterior = updatePosterior(prevPost, String(normalizedAnswer));
 
     // メモリ内の進捗も同期
     const st = loopOf(id);
