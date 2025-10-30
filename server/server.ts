@@ -1132,13 +1132,33 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     // ----- 種が無い or 第2問以降は LLM で生成 -----
     if (!q) {
       const t0 = Date.now();
-      const qs = await genQuestionsLLM({
-        strengths_top5: meta?.strengths_top5 ?? [],
-        demographics: meta?.demographics ?? {},
-        n: 1,
-        avoid_texts: st.recentTexts,
-      });
-      q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
+
+      // これまでの回答を取得（2問目以降は回答履歴を参照）
+      const rawPairs = await fetchQAPairs(id);
+      const qa_pairs = rawPairs.slice(-10).map(p => ({
+        q: p.question_text,
+        a: String(p.answer),
+      }));
+
+      // 回答がある場合は runInterviewer、ない場合は genQuestionsLLM
+      if (qa_pairs.length > 0) {
+        const inter = await runInterviewer({
+          hypotheses: meta?.hypotheses ?? [],
+          qa_pairs,
+          strengths_top5: meta?.strengths_top5 ?? [],
+          demographics: meta?.demographics ?? {},
+        });
+        q = { id: inter.question.id, text: inter.question.text, theme: '' };
+      } else {
+        const qs = await genQuestionsLLM({
+          strengths_top5: meta?.strengths_top5 ?? [],
+          demographics: meta?.demographics ?? {},
+          n: 1,
+          avoid_texts: st.recentTexts,
+        });
+        q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
+      }
+
       await recordTrace({
         session_id: id,
         model: OPENAI_MODEL,
