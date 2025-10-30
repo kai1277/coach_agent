@@ -403,6 +403,13 @@ export default function SessionPage() {
     }
   }, [chatMessages.length]);
 
+  // デバッグ: loopStateの変化を監視
+  useEffect(() => {
+    console.log("loopState changed:", loopState);
+    console.log("currentQuestion:", getCurrentQuestion(loopState));
+    console.log("loopBusy:", loopBusy);
+  }, [loopState, loopBusy]);
+
   // 復元 → 正規化して保持
   useEffect(() => {
     if (!restored) return;
@@ -499,6 +506,7 @@ export default function SessionPage() {
         answer: "UNKNOWN",
         answerText: trimmed || undefined,
       });
+      console.log("Answer response:", data);
       setLoopState(data as any);
       // 回答ログとセッションの最新化
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
@@ -511,10 +519,12 @@ export default function SessionPage() {
       setAnswerInput("");
       setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
+      console.error("Answer error:", e);
       const msg = String(e?.message || e);
       setLoopError(msg);
       showToast(`回答エラー：${msg}`, { type: "error" });
     } finally {
+      console.log("Setting loopBusy to false");
       setLoopBusy(false);
     }
   };
@@ -1076,7 +1086,13 @@ export default function SessionPage() {
                   >
                     <Textarea
                       ref={messageInputRef}
-                      placeholder="回答を入力してください..."
+                      placeholder={
+                        loopBusy
+                          ? "処理中です..."
+                          : !currentQuestion?.id
+                          ? "次の質問を読み込んでいます..."
+                          : "回答を入力してください..."
+                      }
                       value={answerInput}
                       onChange={(e) => setAnswerInput(e.target.value)}
                       disabled={loopBusy || !currentQuestion?.id}
