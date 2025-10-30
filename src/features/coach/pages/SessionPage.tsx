@@ -868,7 +868,8 @@ export default function SessionPage() {
                 </CardFooter>
               </Card>
             )}
-            <Card>
+            {/* 最近のセッション一覧は非表示（保存機能は維持） */}
+            {/* <Card>
               <CardHeader>
                 <SectionLabel subtle>履歴</SectionLabel>
                 <CardTitle>最近のセッション</CardTitle>
@@ -924,7 +925,7 @@ export default function SessionPage() {
                   </div>
                 )}
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
           <div className="space-y-6">
             {!hasSession ? (
