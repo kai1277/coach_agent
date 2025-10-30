@@ -112,7 +112,10 @@ export const api = {
     getNext(id: string) {
       return request<LoopFetch>(`/api/sessions/${id}/questions/next`);
     },
-    answer(id: string, body: { questionId: string; answer: Answer5 }) {
+    answer(
+      id: string,
+      body: { questionId: string; answer?: Answer5; answerText?: string }
+    ) {
       return request<LoopFetch>(`/api/sessions/${id}/answers`, {
         method: "POST",
         body: JSON.stringify(body),

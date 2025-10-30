@@ -349,9 +349,10 @@ async function genQuestionsLLM(
     demographics?: Record<string, any>;
     n: number;
     avoid_texts?: string[];
+    answers?: Array<{ question_id: string | null; answer: string | null; answer_text?: string | null }>;
   }
 ): Promise<Question[]> {
-  const { strengths_top5 = [], demographics = {}, n, avoid_texts = [] } = opts;
+  const { strengths_top5 = [], demographics = {}, n, avoid_texts = [], answers = [] } = opts;
 
   // RAG: casebook_cards からベストプラクティスを取得
   const caseCards = await ragCasebook(strengths_top5, demographics, 3);
@@ -383,14 +384,22 @@ ${caseContext || '(ケースなし)'}
 ${kbContext || '(知識なし)'}
 `;
 
+  // 回答履歴を整形
+  const answersContext = answers.length > 0
+    ? answers.map((a, i) => `${i + 1}. Q: ${a.question_id ?? '(unknown)'} → A: ${a.answer_text || a.answer || '(未回答)'}`).join('\n')
+    : '(まだ回答なし)';
+
 const user = `入力:
 - strengths_top5: ${JSON.stringify(strengths_top5)}
 - demographics: ${JSON.stringify(demographics)}
 - n: ${n}
 - avoid_texts（この文面は出さない）: ${JSON.stringify(avoid_texts)}
+- これまでの回答履歴:
+${answersContext}
 
 要件（特に n=1 のとき厳守）:
-- ストレングスTop5と基本属性を総合し、最初の1問として「最も効果が高い1問」を設計する
+- ストレングスTop5と基本属性、そしてこれまでの回答履歴を総合し、次に聞くべき「最も効果が高い1問」を設計する
+- 回答履歴がある場合は、それを踏まえてより深掘りする質問や、新しい観点からの質問を考える
 - 「はい」「たぶんはい」「わからない」「たぶんいいえ」「いいえ」の5択で答えられる YES/NO 系で、内省を促し会話の質を高める問い
 - 文長は 15〜40 文字程度、日本語。曖昧語を避け具体的
 - 既出文面（avoid_texts）は使わない
@@ -556,6 +565,7 @@ async function fetchAnswerHistory(session_id: string) {
   return data.map(r => ({
     question_id: (r as any)?.content?.question_id ?? null,
     answer: (r as any)?.content?.answer ?? null,
+    answer_text: (r as any)?.content?.answer_text ?? null,
   }));
 }
 
@@ -564,7 +574,11 @@ async function fetchAnswerHistory(session_id: string) {
 async function genPersonaAndNextSteps(opts: {
   strengths_top5?: string[];
   demographics?: Record<string, any>;
-  answers: Array<{ question_id: string | null; answer: string | null }>;
+  answers: Array<{
+    question_id: string | null;
+    answer: string | null;
+    answer_text?: string | null;
+  }>;
 }): Promise<{ persona_statement: string; next_steps: string[] }> {
   const { strengths_top5 = [], demographics = {}, answers = [] } = opts;
 
@@ -1008,12 +1022,16 @@ app.post('/api/sessions/:id/seed-questions', async (req, res) => {
       row = ins.data;
     }
 
+    // 回答履歴を取得
+    const answers = await fetchAnswerHistory(id);
+
     const t0 = Date.now();
     const questions = await genQuestionsLLM({
       strengths_top5: strengths_top5 ?? row.metadata?.strengths_top5 ?? [],
       demographics: demographics ?? row.metadata?.demographics ?? {},
       n: size,
       avoid_texts: st.recentTexts,
+      answers,
     });
 
     await recordTrace({
@@ -1143,12 +1161,15 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
         };
       } else {
         // まだ回答がない場合のみ、新規に質問を生成
+        const answers = await fetchAnswerHistory(id);
+
         const t0 = Date.now();
         const qs = await genQuestionsLLM({
           strengths_top5: meta?.strengths_top5 ?? [],
           demographics: meta?.demographics ?? {},
           n: 1,
           avoid_texts: st.recentTexts,
+          answers,
         });
         q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
 
@@ -1199,14 +1220,28 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 app.post('/api/sessions/:id/answers', async (req, res) => {
   try {
     const { id } = req.params;
-    const { questionId, answer } = req.body ?? {};
+    const { questionId, answer, answerText } = req.body ?? {};
     if (!questionId) return sendErr(res, 400, 'questionId is required');
+
+    const normalizedAnswer =
+      typeof answer === 'string' && answer.trim().length > 0
+        ? String(answer)
+        : 'UNKNOWN';
+    const normalizedText =
+      typeof answerText === 'string' && answerText.trim().length > 0
+        ? answerText.trim()
+        : null;
 
     // 1) 回答を保存
     await supabase.from('turns').insert({
       session_id: id,
       role: 'user',
-      content: { type: 'answer', question_id: questionId, answer },
+      content: {
+        type: 'answer',
+        question_id: questionId,
+        answer: normalizedAnswer,
+        answer_text: normalizedText,
+      },
     });
 
     // 2) 確率（暫定）更新を turn にも保存
@@ -1217,7 +1252,7 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     const max_questions = Number(row.data.max_questions ?? 8);
     const meta = (row.data.metadata ?? {}) as any;
     const prevPost = meta?.posterior ?? null;
-    const newPosterior = updatePosterior(prevPost, String(answer));
+    const newPosterior = updatePosterior(prevPost, String(normalizedAnswer));
 
     // メモリ内の進捗も同期
     const st = loopOf(id);
