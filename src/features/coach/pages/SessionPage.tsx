@@ -290,7 +290,6 @@ export default function SessionPage() {
   );
 
   const [answerInput, setAnswerInput] = useState("");
-  const [selectedChoice, setSelectedChoice] = useState<Answer5 | null>(null);
 
   const [list, setList] = useState<
     Array<{ id: string; title?: string | null; created_at: string }>
@@ -447,7 +446,6 @@ export default function SessionPage() {
       const data = await api.sessions.getNext(sessionId);
       setLoopState(data as any);
       setAnswerInput("");
-      setSelectedChoice(null);
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
@@ -463,20 +461,18 @@ export default function SessionPage() {
   const answer = async ({
     questionId,
     text,
-    choice,
   }: {
     questionId: string;
-    text?: string;
-    choice?: Answer5 | null;
+    text: string;
   }) => {
     if (!sessionId) return;
     setLoopBusy(true);
     setLoopError(null);
     try {
-      const trimmed = text?.trim() ?? "";
+      const trimmed = text.trim();
       const data = await api.sessions.answer(sessionId, {
         questionId,
-        answer: choice ?? "UNKNOWN",
+        answer: "UNKNOWN",
         answerText: trimmed || undefined,
       });
       setLoopState(data as any);
@@ -489,7 +485,6 @@ export default function SessionPage() {
       }
       // サーバーから次の質問も含めて返ってくるので、fetchNext()は不要
       setAnswerInput("");
-      setSelectedChoice(null);
       setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
@@ -503,14 +498,13 @@ export default function SessionPage() {
   const submitCurrentAnswer = async (questionId?: string | null) => {
     if (!questionId || loopBusy) return;
     const trimmed = answerInput.trim();
-    if (!trimmed && !selectedChoice) {
+    if (!trimmed) {
       showToast("回答を入力してください", { type: "info" });
       return;
     }
     await answer({
       questionId,
       text: trimmed,
-      choice: selectedChoice ?? undefined,
     });
   };
 
@@ -527,7 +521,6 @@ export default function SessionPage() {
       qc.invalidateQueries({ queryKey: ["turns", sessionId] });
       qc.invalidateQueries({ queryKey: ["session", sessionId] });
       setAnswerInput("");
-      setSelectedChoice(null);
       setTimeout(() => messageInputRef.current?.focus(), 0);
     } catch (e: any) {
       const msg = String(e?.message || e);
@@ -556,7 +549,6 @@ export default function SessionPage() {
     setLoopError(null);
     // setRefineText("");
     setAnswerInput("");
-    setSelectedChoice(null);
     setTimeToFirst(null);
     setSelected([]);
     setQuery("");
@@ -957,8 +949,8 @@ export default function SessionPage() {
                     進捗: {prog.asked}/{prog.max || "—"}
                   </div>
 
-                  <div className="rounded-lg border overflow-hidden flex flex-col bg-white">
-                    <div className="flex-1 overflow-y-auto space-y-3 p-3 bg-gray-50">
+                  <div className="rounded-3xl border border-gray-200 overflow-hidden flex flex-col bg-[#f7f7f8] shadow-sm">
+                    <div className="flex-1 overflow-y-auto space-y-4 px-6 py-6">
                       {turnsLoading ? (
                         <div className="text-sm text-gray-500">
                           履歴を読み込んでいます…
@@ -978,9 +970,9 @@ export default function SessionPage() {
                             }`}
                           >
                             <div
-                              className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
+                              className={`max-w-[85%] rounded-3xl px-5 py-4 text-sm leading-relaxed shadow-sm transition ${
                                 msg.role === "assistant"
-                                  ? "bg-white border"
+                                  ? "bg-white border border-gray-200 text-gray-900"
                                   : "bg-black text-white"
                               }`}
                             >
@@ -992,7 +984,7 @@ export default function SessionPage() {
                               ) : null}
                               {msg.createdAt ? (
                                 <div
-                                  className={`mt-1 text-[10px] ${
+                                  className={`mt-3 text-[10px] ${
                                     msg.role === "assistant"
                                       ? "text-gray-400"
                                       : "text-white/70"
@@ -1007,64 +999,27 @@ export default function SessionPage() {
                       )}
                     </div>
                     <form
-                      className="border-t bg-white p-3 space-y-2"
+                      className="border-t border-gray-200 bg-white/80 backdrop-blur-sm p-4 space-y-3"
                       onSubmit={(e) => {
                         e.preventDefault();
                       }}
                     >
-                      <div>
-                        <div className="text-xs text-gray-500 mb-1">現在の質問</div>
-                        <div className="text-sm font-medium text-gray-800">
-                          {curQ?.text || "（取得中）"}
-                        </div>
-                      </div>
-                      <textarea
-                        ref={messageInputRef}
-                        className="w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black min-h-[96px] resize-vertical disabled:opacity-50"
-                        placeholder="自由に回答を入力してください。必要に応じて改行し、下のボタンから送信できます。"
-                        value={answerInput}
-                        onChange={(e) => setAnswerInput(e.target.value)}
-                        disabled={loopBusy || !curQ?.id}
-                      />
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs text-gray-500">クイック返信:</span>
-                        {(Object.entries(ANSWER_LABEL) as Array<[
-                          Answer5,
-                          string,
-                        ]>).map(([key, label]) => (
-                          <button
-                            type="button"
-                            key={key}
-                            className={`rounded-full border px-3 py-1 text-xs transition ${
-                              selectedChoice === key
-                                ? "bg-black text-white border-black"
-                                : "bg-white text-gray-700 hover:bg-gray-100"
-                            } disabled:opacity-50`}
-                            disabled={loopBusy}
-                            onClick={() =>
-                              setSelectedChoice((prev) =>
-                                prev === key ? null : key
-                              )
-                            }
-                          >
-                            {label}
-                          </button>
-                        ))}
-                        {selectedChoice && (
-                          <button
-                            type="button"
-                            className="text-xs text-gray-500 underline"
-                            onClick={() => setSelectedChoice(null)}
-                            disabled={loopBusy}
-                          >
-                            選択をクリア
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex justify-end">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                        <textarea
+                          ref={messageInputRef}
+                          className="flex-1 rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm leading-relaxed shadow-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300 min-h-[120px] resize-vertical disabled:opacity-50"
+                          placeholder={
+                            curQ?.text
+                              ? `${curQ.text}\n\n思いついたことを自由に教えてください。`
+                              : "質問を取得しています…"
+                          }
+                          value={answerInput}
+                          onChange={(e) => setAnswerInput(e.target.value)}
+                          disabled={loopBusy || !curQ?.id}
+                        />
                         <button
                           type="button"
-                          className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
+                          className="whitespace-nowrap rounded-2xl bg-black px-6 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={loopBusy || !curQ?.id}
                           onClick={async () => {
                             await submitCurrentAnswer(curQ?.id);
@@ -1072,6 +1027,9 @@ export default function SessionPage() {
                         >
                           {loopBusy ? "送信中…" : "回答を送信"}
                         </button>
+                      </div>
+                      <div className="text-xs text-right text-gray-500">
+                        Enterキーでは送信されません。ボタンを押して回答を送信してください。
                       </div>
                     </form>
                   </div>
