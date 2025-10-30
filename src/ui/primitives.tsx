@@ -23,7 +23,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         className={cn(
-          "rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.7)] backdrop-blur-xl",
+          "rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_25px_70px_-35px_rgba(15,23,42,0.35)]",
           className
         )}
         {...props}
@@ -50,7 +50,7 @@ export const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
   ({ className, ...props }, ref) => (
     <h2
       ref={ref}
-      className={cn("text-lg font-semibold tracking-tight text-white", className)}
+      className={cn("text-lg font-semibold tracking-tight text-slate-900", className)}
       {...props}
     />
   )
@@ -64,7 +64,7 @@ export const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm text-slate-300", className)}
+    className={cn("text-sm text-slate-500", className)}
     {...props}
   />
 ));
@@ -92,15 +92,16 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const BUTTON_BASE =
-  "inline-flex items-center justify-center rounded-full text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center rounded-full text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50";
 
 const BUTTON_VARIANTS: Record<NonNullable<ButtonProps["variant"]>, string> = {
   primary:
-    "bg-emerald-500/90 text-slate-950 shadow-[0_10px_30px_-12px_rgba(16,185,129,0.65)] hover:bg-emerald-400",
-  secondary: "bg-slate-800/80 text-slate-100 hover:bg-slate-700/80",
+    "bg-sky-600 text-white shadow-[0_15px_35px_-20px_rgba(2,132,199,0.8)] hover:bg-sky-500",
+  secondary:
+    "bg-slate-100 text-slate-700 shadow-[0_10px_30px_-22px_rgba(15,23,42,0.4)] hover:bg-slate-200",
   outline:
-    "border border-slate-700/60 bg-transparent text-slate-100 hover:border-emerald-400/50 hover:text-white",
-  ghost: "text-slate-300 hover:text-white hover:bg-slate-800/60",
+    "border border-slate-300 bg-white text-slate-700 hover:border-sky-300 hover:text-sky-600",
+  ghost: "text-slate-500 hover:text-slate-900 hover:bg-slate-100/70",
   destructive: "bg-rose-500 text-white hover:bg-rose-500/90",
 };
 
@@ -128,7 +129,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     <textarea
       ref={ref}
       className={cn(
-        "w-full rounded-2xl border border-slate-700/60 bg-slate-950/40 px-4 py-3 text-sm text-slate-100 shadow-inner placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60",
+        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-60",
         className
       )}
       {...props}
@@ -143,7 +144,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     <input
       ref={ref}
       className={cn(
-        "w-full rounded-2xl border border-slate-700/60 bg-slate-950/40 px-4 py-2.5 text-sm text-slate-100 shadow-inner placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60",
+        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-60",
         className
       )}
       {...props}
@@ -160,7 +161,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       className={cn("relative overflow-hidden", className)}
       {...props}
     >
-      <div className="h-full w-full overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700/70 scrollbar-track-transparent">
+      <div className="h-full w-full overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
         {children}
       </div>
     </div>
@@ -179,8 +180,8 @@ export const SectionLabel: React.FC<{
     className={cn(
       "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium uppercase tracking-widest",
       subtle
-        ? "bg-slate-800/60 text-slate-300"
-        : "bg-emerald-500/15 text-emerald-300"
+        ? "bg-slate-100 text-slate-500"
+        : "bg-sky-100 text-sky-600"
     )}
   >
     {children}
@@ -193,7 +194,7 @@ export const Muted = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm leading-relaxed text-slate-300/90", className)}
+    className={cn("text-sm leading-relaxed text-slate-500", className)}
     {...props}
   />
 ));
