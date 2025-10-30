@@ -947,45 +947,49 @@ export default function SessionPage() {
                     </div>
                   </div>
 
-                  {/* === 質問に対するワンクリック評価（既存そのまま） === */}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-sm text-gray-600">
-                      この質問は役に立ちましたか？
-                    </span>
-                    <button
-                      className="px-2 py-1 rounded border disabled:opacity-50"
-                      disabled={!lastTraceId || fbBusy}
-                      onClick={() => sendFeedback("up")}
-                      title="役に立った"
-                    >
-                      👍 良い
-                    </button>
-                    <button
-                      className="px-2 py-1 rounded border disabled:opacity-50"
-                      disabled={!lastTraceId || fbBusy}
-                      onClick={() => sendFeedback("down")}
-                      title="役に立たない／改善してほしい"
-                    >
-                      👎 微妙
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      className="flex-1 rounded border p-2 text-sm"
-                      placeholder="任意メモ（なぜ良い/悪い？改善案など）"
-                      value={fbNote}
-                      onChange={(e) => setFbNote(e.target.value)}
-                      disabled={!lastTraceId || fbBusy}
-                    />
-                    <button
-                      className="px-3 py-1 rounded border text-sm disabled:opacity-50"
-                      disabled={!lastTraceId || fbBusy || !fbNote.trim()}
-                      onClick={() => sendFeedback("down")}
-                      title="メモ付きで送信（改善要望など）"
-                    >
-                      送信
-                    </button>
-                  </div>
+                  {/* === 質問に対するワンクリック評価（一旦非表示） === */}
+                  {false && (
+                    <>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-sm text-gray-600">
+                          この質問は役に立ちましたか？
+                        </span>
+                        <button
+                          className="px-2 py-1 rounded border disabled:opacity-50"
+                          disabled={!lastTraceId || fbBusy}
+                          onClick={() => sendFeedback("up")}
+                          title="役に立った"
+                        >
+                          👍 良い
+                        </button>
+                        <button
+                          className="px-2 py-1 rounded border disabled:opacity-50"
+                          disabled={!lastTraceId || fbBusy}
+                          onClick={() => sendFeedback("down")}
+                          title="役に立たない／改善してほしい"
+                        >
+                          👎 微妙
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <input
+                          className="flex-1 rounded border p-2 text-sm"
+                          placeholder="任意メモ（なぜ良い/悪い？改善案など）"
+                          value={fbNote}
+                          onChange={(e) => setFbNote(e.target.value)}
+                          disabled={!lastTraceId || fbBusy}
+                        />
+                        <button
+                          className="px-3 py-1 rounded border text-sm disabled:opacity-50"
+                          disabled={!lastTraceId || fbBusy || !fbNote.trim()}
+                          onClick={() => sendFeedback("down")}
+                          title="メモ付きで送信（改善要望など）"
+                        >
+                          送信
+                        </button>
+                      </div>
+                    </>
+                  )}
 
                   <div className="flex gap-2">
                     <button
