@@ -250,17 +250,50 @@ async function embedText(text: string): Promise<number[]> {
 
 /* ========== RAG: 検索ユーティリティ ========== */
 async function ragCasebook(strengths_top5: string[] = [], basic: Record<string, any> = {}, k = 5) {
-  const query = [
-    `Top5:${strengths_top5.join(',')}`,
-    `Basic:${JSON.stringify(basic)}`,
-  ].join('\n');
-  const vec = await embedText(query);
-  const { data, error } = await supabase.rpc('match_casebook_cards', {
-    query_embedding: vec as any,
-    match_count: k
-  });
-  if (error) { console.warn('[ragCasebook] ', error.message); return []; }
-  return data ?? [];
+  // 各資質ごとに個別検索して、全ての資質を確実に参照
+  const resultsMap = new Map<string, any>(); // id -> card で重複排除
+
+  for (const strength of strengths_top5) {
+    if (!strength || !strength.trim()) continue;
+
+    const query = [
+      `Strength:${strength}`,
+      `Basic:${JSON.stringify(basic)}`,
+    ].join('\n');
+
+    const vec = await embedText(query);
+    const { data, error } = await supabase.rpc('match_casebook_cards', {
+      query_embedding: vec as any,
+      match_count: Math.ceil(k / Math.max(strengths_top5.length, 1)) + 1 // 各資質から均等に取得
+    });
+
+    if (error) {
+      console.warn(`[ragCasebook] error for strength "${strength}":`, error.message);
+      continue;
+    }
+
+    // 結果をマップに追加（重複排除）
+    (data ?? []).forEach((card: any) => {
+      if (card?.id && !resultsMap.has(card.id)) {
+        resultsMap.set(card.id, card);
+      }
+    });
+  }
+
+  // 資質が指定されていない場合は従来通りの検索
+  if (strengths_top5.length === 0) {
+    const query = `Basic:${JSON.stringify(basic)}`;
+    const vec = await embedText(query);
+    const { data, error } = await supabase.rpc('match_casebook_cards', {
+      query_embedding: vec as any,
+      match_count: k
+    });
+    if (error) { console.warn('[ragCasebook] ', error.message); return []; }
+    return data ?? [];
+  }
+
+  // Map から配列に変換して、最大 k 件まで返す
+  return Array.from(resultsMap.values()).slice(0, k);
 }
 
 async function ragQuestionTemplates(context: {
@@ -320,8 +353,13 @@ async function genQuestionsLLM(
 ): Promise<Question[]> {
   const { strengths_top5 = [], demographics = {}, n, avoid_texts = [] } = opts;
 
-  // RAG用知識を取り込み
-  const query = JSON.stringify({ strengths_top5, demographics });
+  // RAG: casebook_cards からベストプラクティスを取得
+  const caseCards = await ragCasebook(strengths_top5, demographics, 3);
+  const caseContext = caseCards.map((c: any, i: number) =>
+    `CASE${i + 1}: ${c.title}\n- Hypotheses: ${JSON.stringify(c.hypotheses)}\n- Probes: ${JSON.stringify(c.probes)}`
+  ).join('\n---\n');
+
+  // RAG: knowledge_chunks から汎用知識を取得
   const kb = await retrieveTopK(
     {
       strengths_top5,
@@ -329,22 +367,20 @@ async function genQuestionsLLM(
       avoid_texts,
       n,
       purpose: '1on1 coaching: generate concise yes/no seed questions',
-      // 追加で混ぜたいメタがあれば extra に
-      extra: {
-        // 例: ドメイン、プロダクト名、セッションの context など
-        // context: 'interview practice',
-      },
     },
     3 // k
   );
-  const context = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
+  const kbContext = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
 
   const system = `あなたは1on1のための質問設計エージェントです。
-以下の [CONTEXT]（知識断片）を“参考”に、要件に合う日本語の質問だけをJSONで返してください。
+以下の [CASEBOOK]（ケーススタディ）と [KNOWLEDGE]（知識断片）を参考に、要件に合う日本語の質問だけをJSONで返してください。
 必ず JSON のみを出力し、前置きや説明は書かないでください。
 
-[CONTEXT]
-${context || '(コンテキストなし)'}
+[CASEBOOK]
+${caseContext || '(ケースなし)'}
+
+[KNOWLEDGE]
+${kbContext || '(知識なし)'}
 `;
 
 const user = `入力:
@@ -442,29 +478,39 @@ async function genNextStepsLLM(opts: {
 }) {
   const { strengths_top5 = [], demographics = {}, qa_pairs = [], n = 3 } = opts;
 
-  // RAG も活用（ストレングス・デモグラ・回答概要を条件に混ぜる）
+  // RAG: casebook_cards から次の一歩のヒントを取得
+  const caseCards = await ragCasebook(strengths_top5, demographics, 4);
+  const caseContext = caseCards.map((c: any, i: number) =>
+    `CASE${i + 1}: ${c.title}\n- Next Actions: ${JSON.stringify(c.next_actions)}`
+  ).join('\n---\n');
+
+  // RAG: knowledge_chunks から汎用知識を取得
   const ragQuery = JSON.stringify({
     strengths_top5,
     demographics,
     answers: qa_pairs.slice(-10).map(p => ({ q: p.question_text, a: p.answer })), // 直近10件だけ
   });
-  const kb = await retrieveTopK(ragQuery, 4);
-  const context = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
+  const kb = await retrieveTopK(ragQuery, 3);
+  const kbContext = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
 
   const system = `あなたは1on1のコーチングアシスタントです。
-ストレングスや属性、Q&A履歴を踏まえ、短く具体的な「次の一歩」（ToDo）を日本語で提案します。
+以下の [CASEBOOK]（ケーススタディ）と [KNOWLEDGE]（知識断片）を参考に、ストレングスや属性、Q&A履歴を踏まえ、短く具体的な「次の一歩」（ToDo）を日本語で提案します。
 - 出力は JSON のみ
 - 1件あたり40文字以内 / 箇条書き
 - 行動の主体はユーザー本人
-- 安全で実行可能、今週から着手できる内容`;
+- 安全で実行可能、今週から着手できる内容
+
+[CASEBOOK]
+${caseContext || '(ケースなし)'}
+
+[KNOWLEDGE]
+${kbContext || '(知識なし)'}
+`;
 
   const user = `前提:
 - strengths_top5: ${JSON.stringify(strengths_top5)}
 - demographics: ${JSON.stringify(demographics)}
 - qa_pairs(最新→古い): ${JSON.stringify(qa_pairs.slice().reverse())}
-
-参考知識:
-${context || '(なし)'}
 
 出力スキーマ(厳守):
 { "next_steps": ["<短いToDo>", "<短いToDo>", "<短いToDo>"] }`;
@@ -522,9 +568,27 @@ async function genPersonaAndNextSteps(opts: {
 }): Promise<{ persona_statement: string; next_steps: string[] }> {
   const { strengths_top5 = [], demographics = {}, answers = [] } = opts;
 
-  // （任意）RAGを混ぜたいならここで retrieveTopK(JSON.stringify({strengths_top5, demographics, answers})) など
+  // RAG: casebook_cards からペルソナ生成のヒントを取得
+  const caseCards = await ragCasebook(strengths_top5, demographics, 4);
+  const caseContext = caseCards.map((c: any, i: number) =>
+    `CASE${i + 1}: ${c.title}\n- Hypotheses: ${JSON.stringify(c.hypotheses)}\n- Next Actions: ${JSON.stringify(c.next_actions)}`
+  ).join('\n---\n');
+
+  // RAG: knowledge_chunks から汎用知識を取得
+  const ragQuery = JSON.stringify({ strengths_top5, demographics, answers: answers.slice(-10) });
+  const kb = await retrieveTopK(ragQuery, 3);
+  const kbContext = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
+
   const system = `あなたは1on1コーチングの要約・提案アシスタントです。
-出力は必ず JSON のみ。日本語で簡潔に。`;
+以下の [CASEBOOK]（ケーススタディ）と [KNOWLEDGE]（知識断片）を参考に、具体的で説得力のあるペルソナ文と次の一歩を生成してください。
+出力は必ず JSON のみ。日本語で簡潔に。
+
+[CASEBOOK]
+${caseContext || '(ケースなし)'}
+
+[KNOWLEDGE]
+${kbContext || '(知識なし)'}
+`;
 
   const user = `入力:
 - strengths_top5: ${JSON.stringify(strengths_top5)}
@@ -602,15 +666,31 @@ ${context || '(なし)'}
 async function runInterviewer(opts: {
   hypotheses?: string[];
   qa_pairs?: Array<{q:string;a:string}>;
+  strengths_top5?: string[];
+  demographics?: Record<string, any>;
 }) {
-  const { hypotheses = [], qa_pairs = [] } = opts;
+  const { hypotheses = [], qa_pairs = [], strengths_top5 = [], demographics = {} } = opts;
+
+  // RAG: casebook_cards から質問例を取得
+  const caseCards = await ragCasebook(strengths_top5, demographics, 3);
+  const caseContext = caseCards.map((c: any, i: number) =>
+    `CASE${i + 1}: ${c.title}\n- Probes: ${JSON.stringify(c.probes)}\n- Followups: ${JSON.stringify(c.followups)}`
+  ).join('\n---\n');
+
+  // RAG: question_templates からテンプレートを取得
   const qtemps = await ragQuestionTemplates({ hypotheses, last_answers: qa_pairs }, 4);
-  const system = `あなたはインタビュアー。CONTEXT（良問テンプレ候補）を参考に、"次に聞くべき最良の1問" を日本語で作成。JSONのみ。`;
-  const ctx = qtemps.map((t:any,i:number)=>`T${i+1}: ${t.template} | goal:${t.goal} | followups:${JSON.stringify(t.followups)}`).join('\n');
+  const qtempContext = qtemps.map((t:any,i:number)=>`T${i+1}: ${t.template} | goal:${t.goal} | followups:${JSON.stringify(t.followups)}`).join('\n');
+
+  const system = `あなたはインタビュアー。以下の [CASEBOOK]（ケーススタディ）と [TEMPLATES]（質問テンプレート）を参考に、"次に聞くべき最良の1問" を日本語で作成。JSONのみ。
+
+[CASEBOOK]
+${caseContext || '(ケースなし)'}
+
+[TEMPLATES]
+${qtempContext || '(テンプレートなし)'}
+`;
   const user = `仮説: ${JSON.stringify(hypotheses)}
 Q/A履歴(抜粋): ${JSON.stringify(qa_pairs)}
-[CONTEXT]
-${ctx || '(なし)'}
 出力: {"question":{"text":"...", "goal":"...", "template_id":"Q-... (あれば)"}}`;
 
   const r = await openai.chat.completions.create({
@@ -636,11 +716,29 @@ async function runManager(opts: {
 }) {
   const { strengths_top5 = [], demographics = {}, qa_pairs } = opts;
 
-  const system = `あなたはマネジメント設計者。入力を踏まえて
+  // RAG: casebook_cards からマネジメントのヒントを取得
+  const caseCards = await ragCasebook(strengths_top5, demographics, 4);
+  const caseContext = caseCards.map((c: any, i: number) =>
+    `CASE${i + 1}: ${c.title}\n- Management: ${JSON.stringify(c.management)}\n- Next Actions: ${JSON.stringify(c.next_actions)}`
+  ).join('\n---\n');
+
+  // RAG: knowledge_chunks から汎用知識を取得
+  const ragQuery = JSON.stringify({ strengths_top5, demographics, qa_pairs: qa_pairs.slice(-10) });
+  const kb = await retrieveTopK(ragQuery, 3);
+  const kbContext = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
+
+  const system = `あなたはマネジメント設計者。以下の [CASEBOOK]（ケーススタディ）と [KNOWLEDGE]（知識断片）を参考に、入力を踏まえて
 - "あなたはこういう人です！"（断定文で3〜5文）
 - マネジメント方針（DO / DON'T 各3つ以内）
 - 来週の具体アクション（1〜3）
-を日本語JSONで返す。JSON以外禁止。`;
+を日本語JSONで返す。JSON以外禁止。
+
+[CASEBOOK]
+${caseContext || '(ケースなし)'}
+
+[KNOWLEDGE]
+${kbContext || '(知識なし)'}
+`;
 
   const user = `Top5: ${JSON.stringify(strengths_top5)}
 Demographics: ${JSON.stringify(demographics)}
@@ -1172,7 +1270,9 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
     }));
     const inter = await runInterviewer({
       hypotheses: meta?.hypotheses ?? [],
-      qa_pairs,  
+      qa_pairs,
+      strengths_top5: meta?.strengths_top5 ?? [],
+      demographics: meta?.demographics ?? {},
     });
 
     const next_step = {
