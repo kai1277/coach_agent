@@ -1131,25 +1131,17 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 
     // ----- 種が無い or 第2問以降は LLM で生成 -----
     if (!q) {
-      const t0 = Date.now();
-
-      // これまでの回答を取得（2問目以降は回答履歴を参照）
-      const rawPairs = await fetchQAPairs(id);
-      const qa_pairs = rawPairs.slice(-10).map(p => ({
-        q: p.question_text,
-        a: String(p.answer),
-      }));
-
-      // 回答がある場合は runInterviewer、ない場合は genQuestionsLLM
-      if (qa_pairs.length > 0) {
-        const inter = await runInterviewer({
-          hypotheses: meta?.hypotheses ?? [],
-          qa_pairs,
-          strengths_top5: meta?.strengths_top5 ?? [],
-          demographics: meta?.demographics ?? {},
-        });
-        q = { id: inter.question.id, text: inter.question.text, theme: '' };
+      // 既に回答がある場合は、metadata.next_step から質問を取得
+      // （POST /answers で既に次の質問が生成されているため）
+      if (meta?.next_step?.type === 'ASK' && meta.next_step.text) {
+        q = {
+          id: meta.next_step.question_id ?? `Q_${Date.now()}`,
+          text: meta.next_step.text,
+          theme: '',
+        };
       } else {
+        // まだ回答がない場合のみ、新規に質問を生成
+        const t0 = Date.now();
         const qs = await genQuestionsLLM({
           strengths_top5: meta?.strengths_top5 ?? [],
           demographics: meta?.demographics ?? {},
@@ -1157,15 +1149,15 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
           avoid_texts: st.recentTexts,
         });
         q = qs[0] ?? { id: `QF_${Date.now()}`, text: '今週、達成感があったことはありますか？', theme: '' };
-      }
 
-      await recordTrace({
-        session_id: id,
-        model: OPENAI_MODEL,
-        prompt: '(questions/next)',
-        completion: JSON.stringify(q),
-        latency_ms: Date.now() - t0,
-      });
+        await recordTrace({
+          session_id: id,
+          model: OPENAI_MODEL,
+          prompt: '(questions/next)',
+          completion: JSON.stringify(q),
+          latency_ms: Date.now() - t0,
+        });
+      }
     }
 
     // recentTexts に積む
