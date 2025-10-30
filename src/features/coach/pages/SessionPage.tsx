@@ -326,7 +326,6 @@ export default function SessionPage() {
     })();
   }, [sessionId]);
 
-
   const chatMessages = useMemo(() => {
     const messages: Array<{
       id: string;
@@ -657,15 +656,9 @@ export default function SessionPage() {
     ? getProgress(loopState, safeSession.loop?.maxQuestions ?? 0)
     : { asked: 0, max: safeSession.loop?.maxQuestions ?? 0 };
   const loopInFlight =
-    loopStarted &&
-    loopState &&
-    "done" in loopState &&
-    loopState.done === false;
+    loopStarted && loopState && "done" in loopState && loopState.done === false;
   const loopFinished =
-    loopStarted &&
-    loopState &&
-    "done" in loopState &&
-    loopState.done === true;
+    loopStarted && loopState && "done" in loopState && loopState.done === true;
   const loopHeadline =
     loopFinished && typeof (loopState as any)?.headline === "string"
       ? (loopState as any)?.headline
@@ -685,7 +678,7 @@ export default function SessionPage() {
             AI Coaching Studio
           </h1>
           <Muted className="max-w-2xl">
-            Strengthsベースの質問ループで、あなたの強みや次の一歩をAIコーチが伴走します。
+            Strengthsベースの質問ループで、あなたの強みや次の一歩をAIマネージャーが伴走します。
           </Muted>
         </header>
 
@@ -815,7 +808,7 @@ export default function SessionPage() {
                   <SectionLabel subtle>SESSION</SectionLabel>
                   <CardTitle>現在のセッション</CardTitle>
                   <CardDescription>
-                    AIコーチとの対話を進めています。リンクを共有して続きを確認できます。
+                    AIマネージャーとの対話を進めています。リンクを共有して続きを確認できます。
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -932,16 +925,22 @@ export default function SessionPage() {
               <Card className="min-h-[520px]">
                 <CardHeader>
                   <SectionLabel subtle>PREVIEW</SectionLabel>
-                  <CardTitle>AIコーチと対話しましょう</CardTitle>
+                  <CardTitle>AIマネージャーと対話しましょう</CardTitle>
                   <CardDescription>
                     左のフォームからセッションを開始すると、ChatGPTのような体験で質問と回答が交互に表示されます。
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm text-slate-200">
-                    <li>・質問はAIが自動で生成し、あなたの回答に合わせて深掘りします。</li>
-                    <li>・回答はチャット欄に入力し、「回答を送信」ボタンで送信します。</li>
-                    <li>・診断が完了すると、次の一歩の提案やペルソナの要約が表示されます。</li>
+                    <li>
+                      ・質問はAIが自動で生成し、あなたの回答に合わせて深掘りします。
+                    </li>
+                    <li>
+                      ・回答はチャット欄に入力し、「回答を送信」ボタンで送信します。
+                    </li>
+                    <li>
+                      ・診断が完了すると、次の一歩の提案やペルソナの要約が表示されます。
+                    </li>
                   </ul>
                 </CardContent>
               </Card>
@@ -973,23 +972,20 @@ export default function SessionPage() {
               </Card>
             ) : (
               <Card className="flex max-h-[680px] flex-col overflow-hidden p-0">
-                <div className="border-b border-white/5 px-6 py-6 flex-shrink-0">
-                  <SectionLabel subtle>COACH</SectionLabel>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <h2 className="text-2xl font-semibold text-white">
-                      コーチとの対話
-                    </h2>
+                <div className="border-b border-white/5 px-6 py-4 flex-shrink-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <SectionLabel subtle>COACH</SectionLabel>
+                      <h2 className="text-xl font-semibold text-white">
+                        コーチとの対話
+                      </h2>
+                    </div>
                     {loopInFlight && (
                       <span className="text-xs text-slate-400">
                         進捗 {loopProgress.asked}/{loopProgress.max || "—"}
                       </span>
                     )}
                   </div>
-                  <CardDescription className="mt-2">
-                    {currentQuestion?.text
-                      ? currentQuestion.text
-                      : "AIが次の質問を準備しています。"}
-                  </CardDescription>
                 </div>
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <ScrollArea className="h-full px-6 py-6">
@@ -1027,7 +1023,9 @@ export default function SessionPage() {
                                     : "bg-emerald-500 text-slate-950"
                                 )}
                               >
-                                <div className="whitespace-pre-wrap">{msg.text}</div>
+                                <div className="whitespace-pre-wrap">
+                                  {msg.text}
+                                </div>
                                 {msg.pending && !msg.createdAt ? (
                                   <div className="mt-2 text-[10px] text-slate-400">
                                     送信準備中…
@@ -1067,11 +1065,7 @@ export default function SessionPage() {
                   >
                     <Textarea
                       ref={messageInputRef}
-                      placeholder={
-                        currentQuestion?.text
-                          ? `${currentQuestion.text}\n\n思いついたことを自由に教えてください。`
-                          : "質問を取得しています…"
-                      }
+                      placeholder="回答を入力してください..."
                       value={answerInput}
                       onChange={(e) => setAnswerInput(e.target.value)}
                       disabled={loopBusy || !currentQuestion?.id}
@@ -1148,160 +1142,171 @@ export default function SessionPage() {
                 </Card>
               )}
 
-              {loopFinished && loopState && "done" in loopState && loopState.done === true && (
-                <Card aria-live="polite">
-                  <CardHeader>
-                    <SectionLabel subtle>INSIGHT</SectionLabel>
-                    <CardTitle>{loopHeadline || "AIコーチのまとめ"}</CardTitle>
-                    <CardDescription>
-                      診断が完了しました。コーチからの提案です。
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    {isNewDone(loopState) ? (
-                      <>
-                        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
-                          <div className="text-sm font-semibold text-emerald-200">
-                            あなたはこういう人です！
-                          </div>
-                          <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-50">
-                            {loopState.metadata.next_step.summary}
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <div className="text-sm font-semibold text-white/90">
-                            やってみよう！
-                          </div>
-                          <div className="space-y-2">
-                            {(loopState.metadata.next_step.next_week_plan?.length
-                              ? loopState.metadata.next_step.next_week_plan
-                              : loopState.metadata.next_step.management?.do || []
-                            ).map((s, i) => (
-                              <Button
-                                key={`${s}-${i}`}
-                                type="button"
-                                variant="secondary"
-                                className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
-                                onClick={() => {
-                                  navigator.clipboard
-                                    ?.writeText(s)
-                                    .then(() =>
-                                      showToast("コピーしました", {
-                                        type: "success",
-                                      })
-                                    )
-                                    .catch(() =>
-                                      showToast("コピーできませんでした", {
-                                        type: "error",
-                                      })
-                                    );
-                                }}
-                              >
-                                {s}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                        {loopState.metadata.next_step.management?.dont?.length ? (
-                          <div className="space-y-2">
-                            <div className="text-sm font-semibold text-white/90">
-                              避けたいこと
-                            </div>
-                            <ul className="space-y-1 text-sm text-slate-200">
-                              {loopState.metadata.next_step.management.dont.map((d, i) => (
-                                <li key={i}>{d}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        {(loopState as any).persona_statement && (
+              {loopFinished &&
+                loopState &&
+                "done" in loopState &&
+                loopState.done === true && (
+                  <Card aria-live="polite">
+                    <CardHeader>
+                      <SectionLabel subtle>INSIGHT</SectionLabel>
+                      <CardTitle>
+                        {loopHeadline || "AIマネージャーのまとめ"}
+                      </CardTitle>
+                      <CardDescription>
+                        診断が完了しました。AIマネージャーからの提案です。
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      {isNewDone(loopState) ? (
+                        <>
                           <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
                             <div className="text-sm font-semibold text-emerald-200">
                               あなたはこういう人です！
                             </div>
                             <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-50">
-                              {(loopState as any).persona_statement}
+                              {loopState.metadata.next_step.summary}
                             </div>
                           </div>
-                        )}
-                        <div className="space-y-3">
-                          <div className="text-sm font-semibold text-white/90">
-                            やってみよう！
+                          <div className="space-y-3">
+                            <div className="text-sm font-semibold text-white/90">
+                              やってみよう！
+                            </div>
+                            <div className="space-y-2">
+                              {(loopState.metadata.next_step.next_week_plan
+                                ?.length
+                                ? loopState.metadata.next_step.next_week_plan
+                                : loopState.metadata.next_step.management?.do ||
+                                  []
+                              ).map((s, i) => (
+                                <Button
+                                  key={`${s}-${i}`}
+                                  type="button"
+                                  variant="secondary"
+                                  className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
+                                  onClick={() => {
+                                    navigator.clipboard
+                                      ?.writeText(s)
+                                      .then(() =>
+                                        showToast("コピーしました", {
+                                          type: "success",
+                                        })
+                                      )
+                                      .catch(() =>
+                                        showToast("コピーできませんでした", {
+                                          type: "error",
+                                        })
+                                      );
+                                  }}
+                                >
+                                  {s}
+                                </Button>
+                              ))}
+                            </div>
                           </div>
-                          <div className="space-y-2">
-                            {loopState.next_steps.map((s, i) => (
-                              <Button
-                                key={`${s}-${i}`}
-                                type="button"
-                                variant="secondary"
-                                className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
-                                onClick={() => {
-                                  navigator.clipboard
-                                    ?.writeText(s)
-                                    .then(() =>
-                                      showToast("コピーしました", {
-                                        type: "success",
-                                      })
-                                    )
-                                    .catch(() =>
-                                      showToast("コピーできませんでした", {
-                                        type: "error",
-                                      })
-                                    );
-                                }}
-                              >
-                                {s}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                    {(loopState as any).evidence?.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          根拠の内訳
-                        </div>
-                        <ul className="space-y-2 text-xs text-slate-300">
-                          {(loopState as any).evidence.map(
-                            (e: EvidenceItem, i: number) => (
-                              <li
-                                key={i}
-                                className="rounded-xl border border-slate-800/60 bg-slate-900/40 px-3 py-2"
-                              >
-                                <div className="font-medium text-slate-100">
-                                  Q: {e.text}
-                                </div>
-                                <div className="mt-1 text-xs text-slate-300">
-                                  A: {ANSWER_LABEL[e.answer]} ／ 確信度寄与: {(e.delta * 100).toFixed(1)}%
-                                </div>
-                              </li>
-                            )
+                          {loopState.metadata.next_step.management?.dont
+                            ?.length ? (
+                            <div className="space-y-2">
+                              <div className="text-sm font-semibold text-white/90">
+                                避けたいこと
+                              </div>
+                              <ul className="space-y-1 text-sm text-slate-200">
+                                {loopState.metadata.next_step.management.dont.map(
+                                  (d, i) => (
+                                    <li key={i}>{d}</li>
+                                  )
+                                )}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {(loopState as any).persona_statement && (
+                            <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
+                              <div className="text-sm font-semibold text-emerald-200">
+                                あなたはこういう人です！
+                              </div>
+                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-50">
+                                {(loopState as any).persona_statement}
+                              </div>
+                            </div>
                           )}
-                        </ul>
-                      </div>
-                    )}
-                  </CardContent>
-                  <CardFooter className="border-t border-white/5 pt-6">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setLoopStarted(false);
-                        setLoopState(null);
-                      }}
-                    >
-                      もう一度診断する
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={resetAll}>
-                      セッションを終了
-                    </Button>
-                  </CardFooter>
-                </Card>
-              )}
+                          <div className="space-y-3">
+                            <div className="text-sm font-semibold text-white/90">
+                              やってみよう！
+                            </div>
+                            <div className="space-y-2">
+                              {loopState.next_steps.map((s, i) => (
+                                <Button
+                                  key={`${s}-${i}`}
+                                  type="button"
+                                  variant="secondary"
+                                  className="w-full justify-start rounded-2xl border border-emerald-400/30 bg-slate-900/50 text-left text-sm text-slate-100 hover:bg-slate-900/70"
+                                  onClick={() => {
+                                    navigator.clipboard
+                                      ?.writeText(s)
+                                      .then(() =>
+                                        showToast("コピーしました", {
+                                          type: "success",
+                                        })
+                                      )
+                                      .catch(() =>
+                                        showToast("コピーできませんでした", {
+                                          type: "error",
+                                        })
+                                      );
+                                  }}
+                                >
+                                  {s}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      {(loopState as any).evidence?.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            根拠の内訳
+                          </div>
+                          <ul className="space-y-2 text-xs text-slate-300">
+                            {(loopState as any).evidence.map(
+                              (e: EvidenceItem, i: number) => (
+                                <li
+                                  key={i}
+                                  className="rounded-xl border border-slate-800/60 bg-slate-900/40 px-3 py-2"
+                                >
+                                  <div className="font-medium text-slate-100">
+                                    Q: {e.text}
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-300">
+                                    A: {ANSWER_LABEL[e.answer]} ／ 確信度寄与:{" "}
+                                    {(e.delta * 100).toFixed(1)}%
+                                  </div>
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+                      )}
+                    </CardContent>
+                    <CardFooter className="border-t border-white/5 pt-6">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setLoopStarted(false);
+                          setLoopState(null);
+                        }}
+                      >
+                        もう一度診断する
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={resetAll}>
+                        セッションを終了
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                )}
 
               {personaSafe && (
                 <Card>
