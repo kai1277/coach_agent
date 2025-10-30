@@ -822,65 +822,7 @@ export default function SessionPage() {
                   </Button>
                 </CardFooter>
               </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <SectionLabel subtle>SESSION</SectionLabel>
-                  <CardTitle>現在のセッション</CardTitle>
-                  <CardDescription>
-                    AIマネージャーとの対話を進めています。リンクを共有して続きを確認できます。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4">
-                    <div className="text-xs uppercase tracking-wide text-slate-400">
-                      Session ID
-                    </div>
-                    <div className="mt-2 font-mono text-sm text-emerald-200">
-                      {sessionId}
-                    </div>
-                    {timeToFirst !== null && (
-                      <div className="mt-2 text-xs text-slate-400">
-                        初回出力: {timeToFirst} ms
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-                <CardFooter className="border-t border-white/5 pt-6">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      if (!sessionId) return;
-                      const url = `${window.location.origin}/app/coach?session=${sessionId}`;
-                      navigator.clipboard
-                        .writeText(url)
-                        .then(() =>
-                          showToast("共有リンクをコピーしました", {
-                            type: "success",
-                          })
-                        )
-                        .catch(() => {
-                          (window as any).prompt?.(
-                            "以下のURLを手動でコピーしてください。",
-                            url
-                          );
-                        });
-                    }}
-                  >
-                    共有リンクをコピー
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={resetAll}
-                    className="text-slate-300 hover:text-white"
-                  >
-                    新しいセッションを開始
-                  </Button>
-                </CardFooter>
-              </Card>
-            )}
+            ) : null}
             {/* 最近のセッション一覧は非表示（保存機能は維持） */}
             {/* <Card>
               <CardHeader>
