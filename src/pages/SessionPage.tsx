@@ -163,14 +163,23 @@ export default function SessionPage() {
 
         <div className="rounded-lg border p-4 space-y-3">
           <h2 className="text-lg font-medium">セッション操作</h2>
-          <button
-            type="button"
-            onClick={handleCreateSession}
-            disabled={isCreating}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {isCreating ? "作成中..." : "新しいセッションを作成"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCreateSession}
+              disabled={isCreating}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {isCreating ? "作成中..." : "新しいセッションを作成"}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/sessions')}
+              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            >
+              過去のセッション一覧
+            </button>
+          </div>
           {sessionId ? (
             <div className="space-y-2 text-sm text-gray-600">
               <p>最新のセッションID: {sessionId}</p>

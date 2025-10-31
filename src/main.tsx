@@ -8,6 +8,7 @@ import RegisterPage from "./pages/RegisterPage";
 import UserInfoPage from "./pages/UserInfoPage";
 import StrengthsPage from "./pages/StrengthsPage";
 import SessionPage from "./pages/SessionPage";
+import SessionsListPage from "./pages/SessionsListPage";
 import "./index.css";
 import { ToastProvider } from "./ui/ToastProvider";
 
@@ -31,6 +32,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/user-info" element={<UserInfoPage />} />
             <Route path="/strengths" element={<StrengthsPage />} />
             <Route path="/session" element={<SessionPage />} />
+            <Route path="/sessions" element={<SessionsListPage />} />
             <Route path="/app/coach" element={<CoachRoute />} />
           </Routes>
         </BrowserRouter>
