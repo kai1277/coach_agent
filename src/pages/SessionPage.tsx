@@ -94,7 +94,8 @@ export default function SessionPage() {
       }
       const json = await res.json();
       setSessionId(json.id);
-      await loadSession(json.id);
+      // セッション作成後、コーチング画面に遷移
+      navigate(`/app/coach?session=${json.id}`);
     } catch (error) {
       console.error(error);
       alert("セッションの作成に失敗しました。時間をおいて再度お試しください。");

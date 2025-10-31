@@ -148,6 +148,36 @@ export default function UserInfoPage() {
         </div>
 
         <div className="rounded-lg border p-4 space-y-3">
+          <h2 className="text-lg font-medium">基本情報</h2>
+          {user.basicInfo?.age || user.basicInfo?.gender || user.basicInfo?.hometown ? (
+            <dl className="space-y-2 text-sm">
+              {user.basicInfo.age && (
+                <div className="flex">
+                  <dt className="font-medium text-gray-700 w-20">年齢:</dt>
+                  <dd className="text-gray-600">{user.basicInfo.age}</dd>
+                </div>
+              )}
+              {user.basicInfo.gender && (
+                <div className="flex">
+                  <dt className="font-medium text-gray-700 w-20">性別:</dt>
+                  <dd className="text-gray-600">{user.basicInfo.gender}</dd>
+                </div>
+              )}
+              {user.basicInfo.hometown && (
+                <div className="flex">
+                  <dt className="font-medium text-gray-700 w-20">出身:</dt>
+                  <dd className="text-gray-600">{user.basicInfo.hometown}</dd>
+                </div>
+              )}
+            </dl>
+          ) : (
+            <p className="text-sm text-gray-600">
+              まだ登録されていません。上のボタンから登録してください。
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border p-4 space-y-3">
           <h2 className="text-lg font-medium">セッション</h2>
           <p className="text-sm text-gray-600">
             プロフィールをもとにコーチングセッションを開始できます。
