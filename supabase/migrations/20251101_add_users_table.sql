@@ -3,7 +3,17 @@ create table if not exists public.users (
   id uuid primary key default uuid_generate_v4(),
   email text not null unique,
   display_name text not null,
-  profile_data jsonb default '{}'::jsonb,
+  department text,
+  role text,
+  goal text,
+  strength_1 text,
+  strength_2 text,
+  strength_3 text,
+  strength_4 text,
+  strength_5 text,
+  age text,
+  gender text,
+  hometown text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

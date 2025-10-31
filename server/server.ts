@@ -700,16 +700,11 @@ app.post('/api/users', async (req, res) => {
   });
 
   try {
-    // profile_dataに保存するメタデータ
-    const profileData = {
+    const insertData: any = {
+      display_name: normalizedUsername,
       department: department ?? null,
       role: role ?? null,
       goal: goal ?? null,
-    };
-
-    const insertData: any = {
-      display_name: normalizedUsername,
-      profile_data: profileData,
     };
 
     // オプション項目を追加
@@ -722,7 +717,7 @@ app.post('/api/users', async (req, res) => {
     const { data, error } = await supabase
       .from('users')
       .insert(insertData)
-      .select('id, email, display_name, profile_data, created_at, updated_at')
+      .select('id, email, display_name, department, role, goal, strength_1, strength_2, strength_3, strength_4, strength_5, age, gender, hometown, created_at, updated_at')
       .single();
 
     if (error) {
@@ -743,18 +738,28 @@ app.post('/api/users', async (req, res) => {
       display_name: data.display_name
     });
 
-    const savedProfileData = data.profile_data || {};
+    const strengthsTop5 = [
+      data.strength_1,
+      data.strength_2,
+      data.strength_3,
+      data.strength_4,
+      data.strength_5,
+    ].filter((s): s is string => !!s);
 
     return res.status(201).json({
       id: data.id,
       email: data.email,
       display_name: data.display_name,
       username: data.display_name,
-      department: savedProfileData.department || null,
-      role: savedProfileData.role || null,
-      goal: savedProfileData.goal || null,
-      strengthsTop5: savedProfileData.strengthsTop5 || [],
-      basicInfo: savedProfileData.basicInfo || {},
+      department: data.department,
+      role: data.role,
+      goal: data.goal,
+      strengthsTop5,
+      basicInfo: {
+        age: data.age,
+        gender: data.gender,
+        hometown: data.hometown,
+      },
       created_at: data.created_at,
       updated_at: data.updated_at,
     });
