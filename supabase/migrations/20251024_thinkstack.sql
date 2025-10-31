@@ -69,21 +69,7 @@ create index if not exists question_templates_embed_idx
   on public.question_templates using ivfflat (embedding vector_cosine_ops)
   with (lists = 100);
 
--- ============ 4) Evidence Snippets ============
-create table if not exists public.evidence_snippets (
-  id uuid primary key default uuid_generate_v4(),
-  text text not null,
-  tags jsonb,
-  source jsonb,
-  embedding vector(1536),
-  created_at timestamp with time zone default now()
-);
-
-create index if not exists evidence_snippets_embed_idx
-  on public.evidence_snippets using ivfflat (embedding vector_cosine_ops)
-  with (lists = 100);
-
--- ============ 5) 結論 ============
+-- ============ 4) 結論 ============
 create table if not exists public.conclusions (
   session_id uuid unique references public.sessions(id) on delete cascade,
   you_are text,
@@ -93,7 +79,7 @@ create table if not exists public.conclusions (
   created_at timestamp with time zone default now()
 );
 
--- ============ 6) マッチ RPC ============
+-- ============ 5) マッチ RPC ============
 drop function if exists public.match_casebook_cards(vector,int);
 create function public.match_casebook_cards(query_embedding vector, match_count int)
 returns table (
