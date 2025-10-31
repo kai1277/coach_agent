@@ -982,15 +982,15 @@ app.post('/api/sessions', async (req, res) => {
     let user_id: string | null = null;
     if (typeof userId === 'string' && userId.trim().length > 0) {
       user_id = userId.trim();
-    } else if (userId != null) {
-      return res.status(400).json({ error: 'userId must be a string' });
+    } else if (userId !== null && userId !== undefined) {
+      console.warn('[SESSION CREATE] Invalid userId:', userId);
+      return res.status(400).json({ error: 'userId must be a valid string or null' });
     }
 
     const { data, error } = await supabase
       .from('sessions')
       .insert({
         title: String(transcript).slice(0, 40),
-        summary: null,
         max_questions: 8,  // デフォルト8問
         asked_count: 0,    // 初期値0
         user_id,
@@ -1000,9 +1000,10 @@ app.post('/api/sessions', async (req, res) => {
           demographics,
           next_steps: [],
           seed_questions: [],
+          summary: null,
         },
       })
-      .select('id, summary, metadata, created_at')
+      .select('id, metadata, created_at')
       .single();
 
     if (error) {
@@ -1015,12 +1016,13 @@ app.post('/api/sessions', async (req, res) => {
 
     const meta = (data?.metadata ?? {}) as Record<string, any>;
     const next_steps: string[] = Array.isArray(meta.next_steps) ? meta.next_steps : [];
+    const summary: string = typeof meta.summary === 'string' ? meta.summary : '';
 
     return res.status(201).json({
       id: data!.id,
       createdAt: data!.created_at ?? new Date().toISOString(),
       output: {
-        summary: data!.summary ?? '',
+        summary,
         hypotheses: [],
         next_steps,
         citations: [],

@@ -86,19 +86,22 @@ export default function SessionPage() {
             gender: user?.basicInfo?.gender,
             hometown: user?.basicInfo?.hometown,
           },
-          userId: user?.id,
+          userId: user?.id || null,
         }),
       });
       if (!res.ok) {
-        throw new Error("failed to create session");
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Session creation failed:', errorData);
+        throw new Error(errorData.error || "failed to create session");
       }
       const json = await res.json();
       setSessionId(json.id);
       // セッション作成後、コーチング画面に遷移
       navigate(`/app/coach?session=${json.id}`);
-    } catch (error) {
-      console.error(error);
-      alert("セッションの作成に失敗しました。時間をおいて再度お試しください。");
+    } catch (error: any) {
+      console.error('Session creation error:', error);
+      console.log('User data:', user);
+      alert(`セッションの作成に失敗しました: ${error.message || '時間をおいて再度お試しください。'}`);
     } finally {
       setIsCreating(false);
     }
