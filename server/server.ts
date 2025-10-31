@@ -1042,12 +1042,25 @@ app.get('/api/sessions', async (req, res) => {
     const limit = Math.min(parseInt(String(req.query.limit ?? '50')), 200);
     const { data, error } = await supabase
       .from('sessions')
-      .select('id, title, summary, created_at')
+      .select('id, title, metadata, created_at')
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (error) return res.status(500).json({ error: 'failed to list sessions' });
-    res.json({ sessions: data ?? [] });
+    if (error) {
+      console.error('GET /api/sessions error:', error);
+      return res.status(500).json({ error: 'failed to list sessions' });
+    }
+
+    // metadataからsummaryを取り出す
+    const sessions = (data ?? []).map(session => ({
+      id: session.id,
+      title: session.title,
+      summary: typeof session.metadata?.summary === 'string' ? session.metadata.summary : null,
+      created_at: session.created_at,
+    }));
+
+    res.json({ sessions });
   } catch (e) {
+    console.error('GET /api/sessions unexpected error:', e);
     res.status(500).json({ error: 'internal error' });
   }
 });
