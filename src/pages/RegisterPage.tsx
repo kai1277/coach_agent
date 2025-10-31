@@ -2,6 +2,12 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import HealthCheck from "../components/HealthCheck";
 
+interface BasicInfo {
+  age?: string;
+  gender?: string;
+  hometown?: string;
+}
+
 interface UserProfile {
   id?: string;
   username: string;
@@ -10,6 +16,7 @@ interface UserProfile {
   role?: string;
   goal?: string;
   strengthsTop5: string[];
+  basicInfo?: BasicInfo;
 }
 
 export default function RegisterPage() {
@@ -58,7 +65,8 @@ export default function RegisterPage() {
         department: data.department,
         role: data.role,
         goal: data.goal,
-        strengthsTop5: [],
+        strengthsTop5: data.strengthsTop5 || [],
+        basicInfo: data.basicInfo || {},
       };
 
       // localStorageに保存

@@ -2,6 +2,12 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import HealthCheck from "../components/HealthCheck";
 
+interface BasicInfo {
+  age?: string;
+  gender?: string;
+  hometown?: string;
+}
+
 interface UserProfile {
   id?: string;
   username: string;
@@ -10,22 +16,18 @@ interface UserProfile {
   role?: string;
   goal?: string;
   strengthsTop5: string[];
-  basicInfo?: {
-    age?: string;
-    location?: string;
-    note?: string;
-  };
+  basicInfo?: BasicInfo;
 }
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = React.useState("");
+  const [email, setEmail] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = username.trim();
+    const trimmed = email.trim();
     if (!trimmed) {
       return;
     }
@@ -37,7 +39,7 @@ export default function LoginPage() {
       const res = await fetch('/api/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: trimmed }),
+        body: JSON.stringify({ email: trimmed }),
       });
 
       if (!res.ok) {
@@ -50,7 +52,11 @@ export default function LoginPage() {
         id: data.id,
         username: data.username || data.display_name,
         email: data.email,
-        strengthsTop5: [],
+        department: data.department,
+        role: data.role,
+        goal: data.goal,
+        strengthsTop5: data.strengthsTop5 || [],
+        basicInfo: data.basicInfo || {},
       };
 
       // localStorageに保存
@@ -72,7 +78,7 @@ export default function LoginPage() {
       <div className="max-w-md mx-auto mt-16 space-y-6 px-4">
         <h1 className="text-2xl font-semibold text-center">ログイン</h1>
         <p className="text-sm text-gray-600 text-center">
-          ユーザーネームを入力してログインしてください。
+          登録したメールアドレスを入力してログインしてください。
         </p>
         {error && (
           <div className="rounded-md bg-red-50 border border-red-200 p-3">
@@ -81,13 +87,15 @@ export default function LoginPage() {
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">ユーザーネーム</span>
+            <span className="text-sm font-medium text-gray-700">メールアドレス</span>
             <input
+              type="email"
               className="mt-1 w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="coach_taro"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="coach@example.com"
               disabled={isLoading}
+              required
             />
           </label>
           <button

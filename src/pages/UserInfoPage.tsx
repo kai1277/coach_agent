@@ -4,8 +4,8 @@ import HealthCheck from "../components/HealthCheck";
 
 interface BasicInfo {
   age?: string;
-  location?: string;
-  note?: string;
+  gender?: string;
+  hometown?: string;
 }
 
 interface UserProfile {

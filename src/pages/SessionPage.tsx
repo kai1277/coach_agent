@@ -6,8 +6,8 @@ import type { SessionGetResponse } from "../types/api";
 
 interface BasicInfo {
   age?: string;
-  location?: string;
-  note?: string;
+  gender?: string;
+  hometown?: string;
 }
 
 interface UserProfile {
@@ -83,7 +83,8 @@ export default function SessionPage() {
             department: user?.department,
             role: user?.role,
             age: user?.basicInfo?.age,
-            location: user?.basicInfo?.location,
+            gender: user?.basicInfo?.gender,
+            hometown: user?.basicInfo?.hometown,
           },
           userId: user?.id,
         }),
@@ -139,10 +140,10 @@ export default function SessionPage() {
             <p>役割: {user.role ?? "未設定"}</p>
             <p>1on1で達成したいこと: {user.goal ?? "未設定"}</p>
             {user.basicInfo?.age ? <p>年齢: {user.basicInfo.age}</p> : null}
-            {user.basicInfo?.location ? (
-              <p>勤務地: {user.basicInfo.location}</p>
+            {user.basicInfo?.gender ? (
+              <p>性別: {user.basicInfo.gender}</p>
             ) : null}
-            {user.basicInfo?.note ? <p>メモ: {user.basicInfo.note}</p> : null}
+            {user.basicInfo?.hometown ? <p>出身: {user.basicInfo.hometown}</p> : null}
           </div>
           {user.strengthsTop5.length > 0 ? (
             <div>

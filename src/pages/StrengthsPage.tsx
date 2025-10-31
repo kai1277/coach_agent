@@ -5,8 +5,8 @@ import HealthCheck from "../components/HealthCheck";
 
 interface BasicInfo {
   age?: string;
-  location?: string;
-  note?: string;
+  gender?: string;
+  hometown?: string;
 }
 
 interface UserProfile {
@@ -25,8 +25,8 @@ export default function StrengthsPage() {
   const [user, setUser] = React.useState<UserProfile | null>(null);
   const [strengths, setStrengths] = React.useState<string[]>([]);
   const [age, setAge] = React.useState("");
-  const [location, setLocation] = React.useState("");
-  const [note, setNote] = React.useState("");
+  const [gender, setGender] = React.useState("");
+  const [hometown, setHometown] = React.useState("");
 
   // localStorageからユーザー情報を復元
   React.useEffect(() => {
@@ -44,8 +44,8 @@ export default function StrengthsPage() {
         setStrengths(base);
 
         setAge(parsed.basicInfo?.age ?? "");
-        setLocation(parsed.basicInfo?.location ?? "");
-        setNote(parsed.basicInfo?.note ?? "");
+        setGender(parsed.basicInfo?.gender ?? "");
+        setHometown(parsed.basicInfo?.hometown ?? "");
       } catch (err) {
         console.error('Failed to parse saved user:', err);
         localStorage.removeItem('user');
@@ -64,7 +64,7 @@ export default function StrengthsPage() {
     });
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user) return;
 
@@ -73,19 +73,34 @@ export default function StrengthsPage() {
       .filter((item) => item !== "")
       .slice(0, 5);
 
-    const updatedUser = {
-      ...user,
-      strengthsTop5: filteredStrengths,
-      basicInfo: {
-        age: age.trim() || undefined,
-        location: location.trim() || undefined,
-        note: note.trim() || undefined,
-      },
+    const updatedBasicInfo = {
+      age: age.trim() || undefined,
+      gender: gender.trim() || undefined,
+      hometown: hometown.trim() || undefined,
     };
 
-    setUser(updatedUser);
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    navigate('/user-info');
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          strengthsTop5: filteredStrengths,
+          basicInfo: updatedBasicInfo,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to update user profile');
+      }
+
+      const updatedUser = await res.json();
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      navigate('/user-info');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      alert('プロフィールの更新に失敗しました。');
+    }
   };
 
   // 選択済みの資質を除外したリストを生成
@@ -149,22 +164,21 @@ export default function StrengthsPage() {
               />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-gray-700">勤務地</span>
+              <span className="text-sm font-medium text-gray-700">性別</span>
               <input
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring"
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
-                placeholder="東京 / リモート"
+                value={gender}
+                onChange={(event) => setGender(event.target.value)}
+                placeholder="男性 / 女性 / その他"
               />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-gray-700">その他メモ</span>
-              <textarea
+              <span className="text-sm font-medium text-gray-700">出身</span>
+              <input
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring"
-                rows={3}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                placeholder="プロジェクトAのリードとして活動中"
+                value={hometown}
+                onChange={(event) => setHometown(event.target.value)}
+                placeholder="東京都"
               />
             </label>
           </div>

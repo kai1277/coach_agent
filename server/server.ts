@@ -672,8 +672,16 @@ app.post('/api/users', async (req, res) => {
   const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
 
   try {
+    // profile_dataに保存するメタデータ
+    const profileData = {
+      department: department ?? null,
+      role: role ?? null,
+      goal: goal ?? null,
+    };
+
     const insertData: any = {
       display_name: normalizedUsername,
+      profile_data: profileData,
     };
 
     // オプション項目を追加
@@ -684,7 +692,7 @@ app.post('/api/users', async (req, res) => {
     const { data, error } = await supabase
       .from('users')
       .insert(insertData)
-      .select('id, email, display_name, created_at, updated_at')
+      .select('id, email, display_name, profile_data, created_at, updated_at')
       .single();
 
     if (error) {
@@ -699,24 +707,18 @@ app.post('/api/users', async (req, res) => {
       return sendErr(res, 500, 'failed to create user');
     }
 
-    // ユーザーのメタデータを別途保存（department, role, goal など）
-    const metadata = {
-      department: department ?? null,
-      role: role ?? null,
-      goal: goal ?? null,
-    };
-
-    // メタデータをユーザーレコードに保存するか、別テーブルに保存するかは設計次第
-    // ここでは簡易的に返すだけにします（必要に応じてuser_profilesテーブルなどを作成）
+    const savedProfileData = data.profile_data || {};
 
     return res.status(201).json({
       id: data.id,
       email: data.email,
       display_name: data.display_name,
       username: data.display_name,
-      department: department ?? null,
-      role: role ?? null,
-      goal: goal ?? null,
+      department: savedProfileData.department || null,
+      role: savedProfileData.role || null,
+      goal: savedProfileData.goal || null,
+      strengthsTop5: savedProfileData.strengthsTop5 || [],
+      basicInfo: savedProfileData.basicInfo || {},
       created_at: data.created_at,
       updated_at: data.updated_at,
     });
@@ -737,32 +739,115 @@ app.post('/api/users/login', async (req, res) => {
   try {
     let query = supabase
       .from('users')
-      .select('id, email, display_name, created_at, updated_at');
+      .select('id, email, display_name, profile_data, created_at, updated_at');
 
     if (email) {
       const normalizedEmail = String(email).trim().toLowerCase();
+      console.log('[LOGIN] Searching for user with email:', normalizedEmail);
       query = query.eq('email', normalizedEmail);
     } else {
       const normalizedUsername = String(username).trim();
+      console.log('[LOGIN] Searching for user with username:', normalizedUsername);
       query = query.eq('display_name', normalizedUsername);
     }
 
     const { data, error } = await query.single();
 
-    if (error || !data) {
+    if (error) {
+      console.error('[LOGIN] Query error:', error);
       return sendErr(res, 404, 'user not found');
     }
+
+    if (!data) {
+      console.log('[LOGIN] No user data returned');
+      return sendErr(res, 404, 'user not found');
+    }
+
+    console.log('[LOGIN] User found:', { id: data.id, email: data.email, display_name: data.display_name });
+
+    const profileData = data.profile_data || {};
 
     return res.status(200).json({
       id: data.id,
       email: data.email,
       display_name: data.display_name,
       username: data.display_name,
+      department: profileData.department || null,
+      role: profileData.role || null,
+      goal: profileData.goal || null,
+      strengthsTop5: profileData.strengthsTop5 || [],
+      basicInfo: profileData.basicInfo || {},
       created_at: data.created_at,
       updated_at: data.updated_at,
     });
   } catch (e) {
     console.error('POST /api/users/login unexpected error', e);
+    return sendErr(res, 500, 'internal error');
+  }
+});
+
+// ユーザープロフィール更新
+app.patch('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+  const { department, role, goal, strengthsTop5, basicInfo } = req.body ?? {};
+
+  try {
+    // 既存のprofile_dataを取得
+    const existing = await supabase
+      .from('users')
+      .select('profile_data')
+      .eq('id', id)
+      .single();
+
+    if (existing.error || !existing.data) {
+      return sendErr(res, 404, 'user not found');
+    }
+
+    // 既存データとマージ
+    const currentProfileData = existing.data.profile_data || {};
+    const updatedProfileData = {
+      ...currentProfileData,
+      ...(department !== undefined && { department }),
+      ...(role !== undefined && { role }),
+      ...(goal !== undefined && { goal }),
+      ...(strengthsTop5 !== undefined && { strengthsTop5 }),
+      ...(basicInfo !== undefined && { basicInfo }),
+    };
+
+    // 更新
+    const { data, error } = await supabase
+      .from('users')
+      .update({ profile_data: updatedProfileData })
+      .eq('id', id)
+      .select('id, email, display_name, profile_data, created_at, updated_at')
+      .single();
+
+    if (error) {
+      console.error('PATCH /api/users/:id update error', error);
+      return sendErr(res, 500, 'failed to update user');
+    }
+
+    if (!data) {
+      return sendErr(res, 500, 'failed to update user');
+    }
+
+    const profileData = data.profile_data || {};
+
+    return res.status(200).json({
+      id: data.id,
+      email: data.email,
+      display_name: data.display_name,
+      username: data.display_name,
+      department: profileData.department || null,
+      role: profileData.role || null,
+      goal: profileData.goal || null,
+      strengthsTop5: profileData.strengthsTop5 || [],
+      basicInfo: profileData.basicInfo || {},
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+    });
+  } catch (e) {
+    console.error('PATCH /api/users/:id unexpected error', e);
     return sendErr(res, 500, 'internal error');
   }
 });
