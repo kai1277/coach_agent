@@ -33,15 +33,6 @@ import { useQueryClient } from "@tanstack/react-query";
 // import AnswerLog from "../../session/components/AnswerLog";
 import { useTurns } from "../../session/hooks/useTurns";
 
-type LoopQuestion = { id: string; text: string };
-type Posterior = Record<
-  | "TYPE_STRATEGY"
-  | "TYPE_EMPATHY"
-  | "TYPE_EXECUTION"
-  | "TYPE_ANALYTICAL"
-  | "TYPE_STABILITY",
-  number
->;
 type EvidenceItem = {
   questionId: string;
   text: "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO" extends infer A
@@ -50,27 +41,6 @@ type EvidenceItem = {
   answer: "YES" | "PROB_YES" | "UNKNOWN" | "PROB_NO" | "NO";
   delta: number;
 };
-
-type LoopFetch =
-  | {
-      done: false;
-      question: LoopQuestion | null;
-      progress: { asked: number; max: number };
-      hint: { topLabel: string; confidence: number };
-      posterior: Posterior;
-      /** ★ 生成トレースID（HITL投稿に使う） */
-      trace_id?: string | null;
-    }
-  | {
-      done: true;
-      top: { id: string; label: string; confidence: number };
-      next_steps: string[];
-      asked: number;
-      max: number;
-      posterior: Posterior;
-      evidence: EvidenceItem[];
-      persona_statement?: string;
-    };
 
 type SessionOutput = {
   summary: string | null;
@@ -213,12 +183,6 @@ function normalizeSession(raw: any) {
 }
 
 // ===== Loop response helpers =====
-function isOldAsk(x: any): x is Extract<LoopFetch, { done: false }> {
-  return x && x.done === false && "question" in x;
-}
-function isOldDone(x: any): x is Extract<LoopFetch, { done: true }> {
-  return x && x.done === true && "next_steps" in x && !("metadata" in x);
-}
 function isNewAsk(x: any): x is Extract<LoopFetchNew, { done: false }> {
   return x && x.done === false && x.metadata?.next_step?.type === "ASK";
 }
@@ -228,11 +192,9 @@ function isNewDone(x: any): x is Extract<LoopFetchNew, { done: true }> {
 
 /** 共通化：現在の質問ID/本文を取得（なければ null） */
 function getCurrentQuestion(
-  ls: LoopFetch | LoopFetchNew | null
+  ls: LoopFetchNew | null
 ): { id?: string; text?: string } | null {
   if (!ls) return null;
-  if (isOldAsk(ls) && ls.question)
-    return { id: ls.question.id, text: ls.question.text };
   if (isNewAsk(ls))
     return {
       id: ls.metadata.next_step.question_id,
@@ -243,12 +205,10 @@ function getCurrentQuestion(
 
 /** 共通化：進捗 asked / max を取得（max は推定も可） */
 function getProgress(
-  ls: LoopFetch | LoopFetchNew | null,
+  ls: LoopFetchNew | null,
   fallbackMax?: number
 ) {
   if (!ls) return { asked: 0, max: fallbackMax ?? 0 };
-  if (isOldAsk(ls)) return { asked: ls.progress.asked, max: ls.progress.max };
-  if (isOldDone(ls)) return { asked: ls.asked, max: ls.max };
   if ("asked" in ls)
     return { asked: (ls as any).asked ?? 0, max: fallbackMax ?? 0 };
   return { asked: 0, max: fallbackMax ?? 0 };
@@ -289,7 +249,7 @@ export default function SessionPage() {
   const [loopStarted, setLoopStarted] = useState(false);
   const [loopBusy, setLoopBusy] = useState(false);
   const [loopError, setLoopError] = useState<string | null>(null);
-  const [loopState, setLoopState] = useState<(LoopFetch | LoopFetchNew) | null>(
+  const [loopState, setLoopState] = useState<LoopFetchNew | null>(
     null
   );
 
@@ -749,7 +709,7 @@ export default function SessionPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-5">
-                      {isNewDone(loopState) ? (
+                      {isNewDone(loopState) && (
                         <>
                           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
                             <div className="text-sm font-semibold text-sky-700">
@@ -810,50 +770,6 @@ export default function SessionPage() {
                               </ul>
                             </div>
                           ) : null}
-                        </>
-                      ) : (
-                        <>
-                          {(loopState as any).persona_statement && (
-                            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
-                              <div className="text-sm font-semibold text-sky-700">
-                                あなたはこういう人です！
-                              </div>
-                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                                {(loopState as any).persona_statement}
-                              </div>
-                            </div>
-                          )}
-                          <div className="space-y-3">
-                            <div className="text-sm font-semibold text-slate-800">
-                              次のアクション候補
-                            </div>
-                            <div className="space-y-2">
-                              {loopState.next_steps.map((s, i) => (
-                                <Button
-                                  key={`${s}-${i}`}
-                                  type="button"
-                                  variant="secondary"
-                                  className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
-                                  onClick={() => {
-                                    navigator.clipboard
-                                      ?.writeText(s)
-                                      .then(() =>
-                                        showToast("コピーしました", {
-                                          type: "success",
-                                        })
-                                      )
-                                      .catch(() =>
-                                        showToast("コピーできませんでした", {
-                                          type: "error",
-                                        })
-                                      );
-                                  }}
-                                >
-                                  {s}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
                         </>
                       )}
                     </CardContent>
@@ -1230,7 +1146,7 @@ export default function SessionPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-5">
-                      {isNewDone(loopState) ? (
+                      {isNewDone(loopState) && (
                         <>
                           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
                             <div className="text-sm font-semibold text-sky-700">
@@ -1291,50 +1207,6 @@ export default function SessionPage() {
                               </ul>
                             </div>
                           ) : null}
-                        </>
-                      ) : (
-                        <>
-                          {(loopState as any).persona_statement && (
-                            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
-                              <div className="text-sm font-semibold text-sky-700">
-                                あなたはこういう人です！
-                              </div>
-                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                                {(loopState as any).persona_statement}
-                              </div>
-                            </div>
-                          )}
-                          <div className="space-y-3">
-                            <div className="text-sm font-semibold text-slate-800">
-                              次のアクション候補
-                            </div>
-                            <div className="space-y-2">
-                              {loopState.next_steps.map((s, i) => (
-                                <Button
-                                  key={`${s}-${i}`}
-                                  type="button"
-                                  variant="secondary"
-                                  className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
-                                  onClick={() => {
-                                    navigator.clipboard
-                                      ?.writeText(s)
-                                      .then(() =>
-                                        showToast("コピーしました", {
-                                          type: "success",
-                                        })
-                                      )
-                                      .catch(() =>
-                                        showToast("コピーできませんでした", {
-                                          type: "error",
-                                        })
-                                      );
-                                  }}
-                                >
-                                  {s}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
                         </>
                       )}
                       {(loopState as any).evidence?.length > 0 && (

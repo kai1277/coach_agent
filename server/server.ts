@@ -569,86 +569,6 @@ async function fetchAnswerHistory(session_id: string) {
   }));
 }
 
-/* --------------------------- Persona and NextStep Generator ------------------------- */
-
-async function genPersonaAndNextSteps(opts: {
-  strengths_top5?: string[];
-  demographics?: Record<string, any>;
-  answers: Array<{
-    question_id: string | null;
-    answer: string | null;
-    answer_text?: string | null;
-  }>;
-}): Promise<{ persona_statement: string; next_steps: string[] }> {
-  const { strengths_top5 = [], demographics = {}, answers = [] } = opts;
-
-  // RAG: casebook_cards からペルソナ生成のヒントを取得
-  const caseCards = await ragCasebook(strengths_top5, demographics, 4);
-  const caseContext = caseCards.map((c: any, i: number) =>
-    `CASE${i + 1}: ${c.title}\n- Hypotheses: ${JSON.stringify(c.hypotheses)}\n- Next Actions: ${JSON.stringify(c.next_actions)}`
-  ).join('\n---\n');
-
-  // RAG: knowledge_chunks から汎用知識を取得
-  const ragQuery = JSON.stringify({ strengths_top5, demographics, answers: answers.slice(-10) });
-  const kb = await retrieveTopK(ragQuery, 3);
-  const kbContext = kb.map((c, i) => `KB${i + 1}: ${c.content}`).join('\n');
-
-  const system = `あなたは1on1コーチングの要約・提案アシスタントです。
-以下の [CASEBOOK]（ケーススタディ）と [KNOWLEDGE]（知識断片）を参考に、具体的で説得力のあるペルソナ文と次の一歩を生成してください。
-出力は必ず JSON のみ。日本語で簡潔に。
-
-[CASEBOOK]
-${caseContext || '(ケースなし)'}
-
-[KNOWLEDGE]
-${kbContext || '(知識なし)'}
-`;
-
-  const user = `入力:
-- strengths_top5: ${JSON.stringify(strengths_top5)}
-- demographics: ${JSON.stringify(demographics)}
-- answers(時系列): ${JSON.stringify(answers)}
-
-要件:
-- "persona_statement": 断定調で1〜2文。「あなたは〜な人です。」の形。具体例を入れてOK。誇張しすぎない。
-- "next_steps": 1〜3個。短く、行動がわかるTODO。
-
-出力スキーマ（厳守）:
-{
-  "persona_statement": "<断定文>",
-  "next_steps": ["<短いTODO>", "..."]
-}`;
-
-  const t0 = Date.now();
-  const resp = await openai.chat.completions.create({
-    model: OPENAI_MODEL,
-    temperature: 0.2,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
-  });
-
-  const content = resp.choices?.[0]?.message?.content ?? '{}';
-  const parsed = extractJson(content) ?? {};
-  const persona_statement = typeof parsed.persona_statement === 'string'
-    ? parsed.persona_statement.trim()
-    : '';
-  const next_steps: string[] = (Array.isArray(parsed.next_steps) ? parsed.next_steps : [])
-    .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
-    .filter(Boolean)
-    .slice(0, 3);
-
-  await recordTrace({
-    model: OPENAI_MODEL,
-    prompt: JSON.stringify({ system, user }),
-    completion: JSON.stringify({ persona_statement, next_steps }),
-    latency_ms: Date.now() - t0,
-  });
-
-  return { persona_statement, next_steps };
-}
-
 /* ========== Profiler ========== */
 async function runProfiler(opts: {
   strengths_top5?: string[];
@@ -1098,36 +1018,56 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
     // ----- 完了条件 -----
     if (st.asked >= st.loop.maxQuestions && st.asked >= st.loop.minQuestions) {
       const meta = sessionRow.data?.metadata ?? {};
-      const answers = await fetchAnswerHistory(id);
 
-      // ★ まとめ生成（あなたはこういう人です！ + 次の一歩）
-      const out = await genPersonaAndNextSteps({
+      // Q&A ペアを取得
+      const rawPairs = await fetchQAPairs(id);
+      const qa_pairs = rawPairs.map(p => ({
+        q: p.question_text,
+        a: String(p.answer),
+      }));
+
+      // ★ runManager で結論生成
+      const concl = await runManager({
         strengths_top5: meta?.strengths_top5 ?? [],
         demographics: meta?.demographics ?? {},
-        // ここは呼び出し先の期待に合わせて渡す
-        answers,  // ← 関数の引数が qa_pairs を期待する実装なら名前を変えてください
+        qa_pairs,
       });
+
+      const newMeta = {
+        ...meta,
+        next_step: {
+          type: 'CONCLUDE',
+          summary: concl.you_are,
+          management: concl.management,
+          next_week_plan: concl.next_week_plan,
+        }
+      };
 
       // セッションへ永続化
       await supabase
         .from('sessions')
         .update({
-          summary: out.persona_statement,
-          metadata: { ...meta, next_steps: out.next_steps },
+          summary: concl.you_are,
+          metadata: newMeta,
+          status: 'concluded',
         })
         .eq('id', id);
 
+      // conclusions テーブルにも保存
+      await supabase.from('conclusions').upsert({
+        session_id: id,
+        you_are: concl.you_are,
+        management_do: concl.management.do,
+        management_dont: concl.management.dont,
+        next_week_plan: concl.next_week_plan,
+      });
+
       return res.status(200).json({
         done: true,
-        top: { id: 'TYPE_EXECUTION', label: '実行', confidence: 0 },
-        // ★ 生成した next_steps を返す（空配列のままにしない）
-        next_steps: out.next_steps ?? [],
         asked: st.asked,
         max: st.loop.maxQuestions,
         posterior: neutralPosterior(),
-        evidence: [],
-        // ★ フロントで表示する断定文
-        persona_statement: out.persona_statement ?? '',
+        metadata: { next_step: newMeta.next_step },
         trace_id: null,
       });
     }
@@ -1265,28 +1205,16 @@ app.post('/api/sessions/:id/answers', async (req, res) => {
       console.log(`[POST /answers] Reached max questions, generating conclusion...`);
       const rawPairs = await fetchQAPairs(id);
 
-      // A) genPersonaAndNextSteps 用（answers 形式）
-      const answersForPersona = rawPairs.map(p => ({
-        question_id: p.question_id,
-        answer: String(p.answer),
-      }));
-
-      // B) runManager 用（{q,a}[] 形式）
+      // runManager 用（{q,a}[] 形式）
       const qa_pairs = rawPairs.map(p => ({
         q: p.question_text,
         a: String(p.answer),
       }));
 
-      const out = await genPersonaAndNextSteps({
-        strengths_top5: meta?.strengths_top5 ?? [],
-        demographics: meta?.demographics ?? {},
-        answers: answersForPersona,    // ← 正しい型名＆構造
-      });
-
       const concl = await runManager({
         strengths_top5: meta?.strengths_top5 ?? [],
         demographics: meta?.demographics ?? {},
-        qa_pairs,                      // ← {q, a}[]
+        qa_pairs,
       });
 
       const newMeta = {
