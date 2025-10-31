@@ -654,6 +654,26 @@ app.use(express.json());
 
 app.get('/health', (_req, res) => res.send('ok'));
 
+// デバッグ用: 全ユーザーリスト（開発環境のみ）
+app.get('/api/users/debug', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, display_name')
+      .limit(10);
+
+    if (error) {
+      console.error('Debug users list error:', error);
+      return res.status(500).json({ error: 'failed to fetch users' });
+    }
+
+    return res.status(200).json({ users: data });
+  } catch (e) {
+    console.error('Debug users list unexpected error:', e);
+    return res.status(500).json({ error: 'internal error' });
+  }
+});
+
 /* --------------------------------- User APIs -------------------------------- */
 
 // ユーザー登録
@@ -670,6 +690,14 @@ app.post('/api/users', async (req, res) => {
 
   const normalizedUsername = String(username ?? display_name).trim();
   const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
+
+  console.log('[REGISTER] Creating user with:', {
+    username: normalizedUsername,
+    email: normalizedEmail,
+    department,
+    role,
+    goal
+  });
 
   try {
     // profile_dataに保存するメタデータ
@@ -689,6 +717,8 @@ app.post('/api/users', async (req, res) => {
       insertData.email = normalizedEmail;
     }
 
+    console.log('[REGISTER] Inserting data:', insertData);
+
     const { data, error } = await supabase
       .from('users')
       .insert(insertData)
@@ -706,6 +736,12 @@ app.post('/api/users', async (req, res) => {
     if (!data) {
       return sendErr(res, 500, 'failed to create user');
     }
+
+    console.log('[REGISTER] User created successfully:', {
+      id: data.id,
+      email: data.email,
+      display_name: data.display_name
+    });
 
     const savedProfileData = data.profile_data || {};
 
