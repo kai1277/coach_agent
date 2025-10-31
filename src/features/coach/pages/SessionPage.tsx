@@ -531,6 +531,8 @@ export default function SessionPage() {
     create.reset();
     // advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
+    // ユーザー情報ページに戻る
+    navigate('/user-info');
   };
 
   const PersonaView = ({ profile }: { profile: StrengthProfile }) => {
@@ -624,6 +626,20 @@ export default function SessionPage() {
   if (hasSession && loopStarted) {
     return (
       <div className="flex h-screen flex-col bg-background">
+        {/* Header */}
+        <div className="border-b bg-background px-4 py-3">
+          <div className="mx-auto flex max-w-4xl items-center justify-between">
+            <h1 className="text-lg font-semibold">AI Coach</h1>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/user-info')}
+            >
+              過去のセッション
+            </Button>
+          </div>
+        </div>
         {/* Chat Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="mx-auto max-w-4xl space-y-6">

@@ -1367,20 +1367,34 @@ app.get('/api/sessions/:id/questions/next', async (req, res) => {
 
     return res.status(200).json({
       done: false,
-      question: { id: q.id, text: q.text },
-      progress: { asked: st.asked, max: st.loop.maxQuestions },
-      hint: { topLabel: '', confidence: 0 },
+      asked: st.asked,
       posterior: neutralPosterior(),
+      metadata: {
+        next_step: {
+          type: 'ASK',
+          question_id: q.id,
+          text: q.text,
+          goal: '',
+        },
+      },
       trace_id: null,
     });
   } catch (e) {
     console.error('GET /questions/next error', e);
+    const fallbackId = `QF_${Date.now()}`;
     return res.status(200).json({
       done: false,
-      question: { id: `QF_${Date.now()}`, text: '直近で嬉しかったことはありますか？' },
-      progress: { asked: 0, max: 1 },
-      hint: { topLabel: '', confidence: 0 },
+      asked: 0,
       posterior: neutralPosterior(),
+      metadata: {
+        next_step: {
+          type: 'ASK',
+          question_id: fallbackId,
+          text: '直近で嬉しかったことはありますか？',
+          goal: '',
+        },
+      },
+      trace_id: null,
     });
   }
 });
