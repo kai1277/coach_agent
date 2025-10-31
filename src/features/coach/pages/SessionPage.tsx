@@ -736,13 +736,152 @@ export default function SessionPage() {
                   );
                 })}
                 <div ref={chatEndRef} />
+
+                {/* 診断完了後の結果表示 */}
+                {loopFinished && loopState && "done" in loopState && loopState.done === true && (
+                  <Card aria-live="polite" className="mt-6">
+                    <CardHeader>
+                      <CardTitle>
+                        {loopHeadline || "AIマネージャーのまとめ"}
+                      </CardTitle>
+                      <CardDescription>
+                        診断が完了しました。AIマネージャーからの提案です。
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      {isNewDone(loopState) ? (
+                        <>
+                          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                            <div className="text-sm font-semibold text-sky-700">
+                              あなたはこういう人です！
+                            </div>
+                            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                              {loopState.metadata.next_step.summary}
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <div className="text-sm font-semibold text-slate-800">
+                              やってみよう！
+                            </div>
+                            <div className="space-y-2">
+                              {(loopState.metadata.next_step.next_week_plan
+                                ?.length
+                                ? loopState.metadata.next_step.next_week_plan
+                                : loopState.metadata.next_step.management?.do ||
+                                  []
+                              ).map((s, i) => (
+                                <Button
+                                  key={`${s}-${i}`}
+                                  type="button"
+                                  variant="secondary"
+                                  className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+                                  onClick={() => {
+                                    navigator.clipboard
+                                      ?.writeText(s)
+                                      .then(() =>
+                                        showToast("コピーしました", {
+                                          type: "success",
+                                        })
+                                      )
+                                      .catch(() =>
+                                        showToast("コピーできませんでした", {
+                                          type: "error",
+                                        })
+                                      );
+                                  }}
+                                >
+                                  {s}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                          {loopState.metadata.next_step.management?.dont
+                            ?.length ? (
+                            <div className="space-y-2">
+                              <div className="text-sm font-semibold text-slate-800">
+                                避けたいこと
+                              </div>
+                              <ul className="space-y-1 text-sm text-slate-600">
+                                {loopState.metadata.next_step.management.dont.map(
+                                  (d, i) => (
+                                    <li key={i}>{d}</li>
+                                  )
+                                )}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {(loopState as any).persona_statement && (
+                            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                              <div className="text-sm font-semibold text-sky-700">
+                                あなたはこういう人です！
+                              </div>
+                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                {(loopState as any).persona_statement}
+                              </div>
+                            </div>
+                          )}
+                          <div className="space-y-3">
+                            <div className="text-sm font-semibold text-slate-800">
+                              次のアクション候補
+                            </div>
+                            <div className="space-y-2">
+                              {loopState.next_steps.map((s, i) => (
+                                <Button
+                                  key={`${s}-${i}`}
+                                  type="button"
+                                  variant="secondary"
+                                  className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+                                  onClick={() => {
+                                    navigator.clipboard
+                                      ?.writeText(s)
+                                      .then(() =>
+                                        showToast("コピーしました", {
+                                          type: "success",
+                                        })
+                                      )
+                                      .catch(() =>
+                                        showToast("コピーできませんでした", {
+                                          type: "error",
+                                        })
+                                      );
+                                  }}
+                                >
+                                  {s}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </CardContent>
+                    <CardFooter className="border-t border-slate-100 pt-6 flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setLoopStarted(false);
+                          setLoopState(null);
+                        }}
+                      >
+                        もう一度診断する
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={resetAll}>
+                        セッションを終了
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                )}
               </>
             )}
           </div>
         </div>
 
-        {/* Input Area */}
-        <div className="border-t bg-background p-4">
+        {/* Input Area - 診断完了時は非表示 */}
+        {!loopFinished && (
+          <div className="border-t bg-background p-4">
           <div className="mx-auto max-w-4xl">
             <form
               onSubmit={(e) => {
@@ -811,6 +950,7 @@ export default function SessionPage() {
             )}
           </div>
         </div>
+        )}
       </div>
     );
   }
