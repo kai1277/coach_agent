@@ -12,6 +12,7 @@ interface BasicInfo {
 }
 
 interface UserProfile {
+  id?: string;
   username: string;
   email?: string;
   department?: string;
@@ -22,13 +23,17 @@ interface UserProfile {
 }
 
 interface LoginViewProps {
-  onLogin: (username: string) => void;
+  onLogin: (profile: UserProfile) => void;
   onNavigateToRegister: () => void;
+  isLoading: boolean;
+  error: string | null;
 }
 
 interface RegisterViewProps {
   onRegister: (profile: UserProfile) => void;
   onNavigateToLogin: () => void;
+  isLoading: boolean;
+  error: string | null;
 }
 
 interface UserInfoViewProps {
@@ -56,25 +61,63 @@ interface SessionViewProps {
   onBack: () => void;
 }
 
-function LoginView({ onLogin, onNavigateToRegister }: LoginViewProps) {
+function LoginView({ onLogin, onNavigateToRegister, isLoading, error }: LoginViewProps) {
   const [username, setUsername] = React.useState("");
+  const [localLoading, setLocalLoading] = React.useState(false);
+  const [localError, setLocalError] = React.useState<string | null>(null);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = username.trim();
     if (!trimmed) {
       return;
     }
-    onLogin(trimmed);
-    setUsername("");
+
+    setLocalLoading(true);
+    setLocalError(null);
+
+    try {
+      const res = await fetch('/api/users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: trimmed }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'ログインに失敗しました');
+      }
+
+      const data = await res.json();
+      onLogin({
+        id: data.id,
+        username: data.username || data.display_name,
+        email: data.email,
+        strengthsTop5: [],
+      });
+      setUsername("");
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setLocalError(err.message || 'ログインに失敗しました');
+    } finally {
+      setLocalLoading(false);
+    }
   };
+
+  const displayError = localError || error;
+  const displayLoading = localLoading || isLoading;
 
   return (
     <div className="max-w-md mx-auto mt-16 space-y-6">
       <h1 className="text-2xl font-semibold text-center">ログイン</h1>
       <p className="text-sm text-gray-600 text-center">
-        ユーザーネームを入力するだけでログインできます。
+        ユーザーネームを入力してログインしてください。
       </p>
+      {displayError && (
+        <div className="rounded-md bg-red-50 border border-red-200 p-3">
+          <p className="text-sm text-red-800">{displayError}</p>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block">
           <span className="text-sm font-medium text-gray-700">ユーザーネーム</span>
@@ -83,19 +126,22 @@ function LoginView({ onLogin, onNavigateToRegister }: LoginViewProps) {
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             placeholder="coach_taro"
+            disabled={displayLoading}
           />
         </label>
         <button
           type="submit"
-          className="w-full rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          disabled={displayLoading}
+          className="w-full rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
         >
-          ログイン
+          {displayLoading ? 'ログイン中...' : 'ログイン'}
         </button>
       </form>
       <button
         type="button"
         className="w-full text-sm text-blue-600 hover:underline"
         onClick={onNavigateToRegister}
+        disabled={displayLoading}
       >
         アカウントをお持ちでない方はこちら
       </button>
@@ -103,37 +149,77 @@ function LoginView({ onLogin, onNavigateToRegister }: LoginViewProps) {
   );
 }
 
-function RegisterView({ onRegister, onNavigateToLogin }: RegisterViewProps) {
+function RegisterView({ onRegister, onNavigateToLogin, isLoading, error }: RegisterViewProps) {
   const [username, setUsername] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [department, setDepartment] = React.useState("");
   const [role, setRole] = React.useState("");
   const [goal, setGoal] = React.useState("");
+  const [localLoading, setLocalLoading] = React.useState(false);
+  const [localError, setLocalError] = React.useState<string | null>(null);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = username.trim();
     if (!trimmed) {
       return;
     }
-    onRegister({
-      username: trimmed,
-      email: email.trim() || undefined,
-      department: department.trim() || undefined,
-      role: role.trim() || undefined,
-      goal: goal.trim() || undefined,
-      strengthsTop5: [],
-    });
-    setUsername("");
-    setEmail("");
-    setDepartment("");
-    setRole("");
-    setGoal("");
+
+    setLocalLoading(true);
+    setLocalError(null);
+
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: trimmed,
+          email: email.trim() || undefined,
+          department: department.trim() || undefined,
+          role: role.trim() || undefined,
+          goal: goal.trim() || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'ユーザー登録に失敗しました');
+      }
+
+      const data = await res.json();
+      onRegister({
+        id: data.id,
+        username: data.username || data.display_name,
+        email: data.email,
+        department: data.department,
+        role: data.role,
+        goal: data.goal,
+        strengthsTop5: [],
+      });
+      setUsername("");
+      setEmail("");
+      setDepartment("");
+      setRole("");
+      setGoal("");
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      setLocalError(err.message || 'ユーザー登録に失敗しました');
+    } finally {
+      setLocalLoading(false);
+    }
   };
+
+  const displayError = localError || error;
+  const displayLoading = localLoading || isLoading;
 
   return (
     <div className="max-w-md mx-auto mt-16 space-y-6">
       <h1 className="text-2xl font-semibold text-center">ユーザー登録</h1>
+      {displayError && (
+        <div className="rounded-md bg-red-50 border border-red-200 p-3">
+          <p className="text-sm text-red-800">{displayError}</p>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block">
           <span className="text-sm font-medium text-gray-700">ユーザーネーム *</span>
@@ -143,6 +229,7 @@ function RegisterView({ onRegister, onNavigateToLogin }: RegisterViewProps) {
             onChange={(event) => setUsername(event.target.value)}
             placeholder="coach_taro"
             required
+            disabled={displayLoading}
           />
         </label>
         <label className="block">
@@ -153,6 +240,7 @@ function RegisterView({ onRegister, onNavigateToLogin }: RegisterViewProps) {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="coach@example.com"
+            disabled={displayLoading}
           />
         </label>
         <label className="block">
@@ -162,6 +250,7 @@ function RegisterView({ onRegister, onNavigateToLogin }: RegisterViewProps) {
             value={department}
             onChange={(event) => setDepartment(event.target.value)}
             placeholder="プロダクトマネジメント"
+            disabled={displayLoading}
           />
         </label>
         <label className="block">
@@ -171,6 +260,7 @@ function RegisterView({ onRegister, onNavigateToLogin }: RegisterViewProps) {
             value={role}
             onChange={(event) => setRole(event.target.value)}
             placeholder="マネージャー"
+            disabled={displayLoading}
           />
         </label>
         <label className="block">
@@ -181,19 +271,22 @@ function RegisterView({ onRegister, onNavigateToLogin }: RegisterViewProps) {
             value={goal}
             onChange={(event) => setGoal(event.target.value)}
             placeholder="上司との合意形成をスムーズにしたい"
+            disabled={displayLoading}
           />
         </label>
         <button
           type="submit"
-          className="w-full rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          disabled={displayLoading}
+          className="w-full rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
         >
-          登録して進む
+          {displayLoading ? '登録中...' : '登録して進む'}
         </button>
       </form>
       <button
         type="button"
         className="w-full text-sm text-blue-600 hover:underline"
         onClick={onNavigateToLogin}
+        disabled={displayLoading}
       >
         すでにアカウントをお持ちの方はこちら
       </button>
@@ -522,6 +615,7 @@ export default function App() {
   const [isCreating, setIsCreating] = React.useState(false);
   const [sessionData, setSessionData] = React.useState<SessionGetResponse | null>(null);
   const [isLoadingSession, setIsLoadingSession] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const loadSession = React.useCallback(
     async (id: string) => {
@@ -562,6 +656,7 @@ export default function App() {
             age: user?.basicInfo?.age,
             location: user?.basicInfo?.location,
           },
+          userId: user?.id, // ユーザーIDを追加
         }),
       });
       if (!res.ok) {
@@ -587,7 +682,43 @@ export default function App() {
     setUser(null);
     resetSession();
     setStage("login");
+    setError(null);
+    // localStorageからも削除
+    localStorage.removeItem('user');
   };
+
+  const handleLogin = (profile: UserProfile) => {
+    setUser(profile);
+    // localStorageに保存
+    localStorage.setItem('user', JSON.stringify(profile));
+    resetSession();
+    setStage("userInfo");
+    setError(null);
+  };
+
+  const handleRegister = (profile: UserProfile) => {
+    setUser(profile);
+    // localStorageに保存
+    localStorage.setItem('user', JSON.stringify(profile));
+    resetSession();
+    setStage("userInfo");
+    setError(null);
+  };
+
+  // localStorageからユーザー情報を復元
+  React.useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        setStage("userInfo");
+      } catch (err) {
+        console.error('Failed to parse saved user:', err);
+        localStorage.removeItem('user');
+      }
+    }
+  }, []);
 
   React.useEffect(() => {
     if (stage === "session" && sessionId && !sessionData && !isLoadingSession) {
@@ -601,23 +732,25 @@ export default function App() {
       <div className="mx-auto max-w-5xl px-4 pb-12">
         {stage === "login" ? (
           <LoginView
-            onLogin={(username) => {
-              setUser({ username, strengthsTop5: [] });
-              resetSession();
-              setStage("userInfo");
+            onLogin={handleLogin}
+            onNavigateToRegister={() => {
+              setStage("register");
+              setError(null);
             }}
-            onNavigateToRegister={() => setStage("register")}
+            isLoading={false}
+            error={error}
           />
         ) : null}
 
         {stage === "register" ? (
           <RegisterView
-            onRegister={(profile) => {
-              setUser(profile);
-              resetSession();
-              setStage("userInfo");
+            onRegister={handleRegister}
+            onNavigateToLogin={() => {
+              setStage("login");
+              setError(null);
             }}
-            onNavigateToLogin={() => setStage("login")}
+            isLoading={false}
+            error={error}
           />
         ) : null}
 

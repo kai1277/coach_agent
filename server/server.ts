@@ -656,26 +656,34 @@ app.get('/health', (_req, res) => res.send('ok'));
 
 /* --------------------------------- User APIs -------------------------------- */
 
+// ユーザー登録
 app.post('/api/users', async (req, res) => {
-  const { email, display_name } = req.body ?? {};
+  const { email, display_name, username, department, role, goal } = req.body ?? {};
 
   try {
-    ensureString(email, 'email');
-    ensureString(display_name, 'display_name');
+    // username があればそれを使い、なければ display_name を使用
+    const name = username ?? display_name;
+    ensureString(name, 'username or display_name');
   } catch (e: any) {
     return sendErr(res, 400, e?.message ?? 'invalid payload');
   }
 
-  const normalizedEmail = String(email).trim().toLowerCase();
-  const normalizedDisplayName = String(display_name).trim();
+  const normalizedUsername = String(username ?? display_name).trim();
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
 
   try {
+    const insertData: any = {
+      display_name: normalizedUsername,
+    };
+
+    // オプション項目を追加
+    if (normalizedEmail) {
+      insertData.email = normalizedEmail;
+    }
+
     const { data, error } = await supabase
       .from('users')
-      .insert({
-        email: normalizedEmail,
-        display_name: normalizedDisplayName,
-      })
+      .insert(insertData)
       .select('id, email, display_name, created_at, updated_at')
       .single();
 
@@ -691,15 +699,70 @@ app.post('/api/users', async (req, res) => {
       return sendErr(res, 500, 'failed to create user');
     }
 
+    // ユーザーのメタデータを別途保存（department, role, goal など）
+    const metadata = {
+      department: department ?? null,
+      role: role ?? null,
+      goal: goal ?? null,
+    };
+
+    // メタデータをユーザーレコードに保存するか、別テーブルに保存するかは設計次第
+    // ここでは簡易的に返すだけにします（必要に応じてuser_profilesテーブルなどを作成）
+
     return res.status(201).json({
       id: data.id,
       email: data.email,
       display_name: data.display_name,
+      username: data.display_name,
+      department: department ?? null,
+      role: role ?? null,
+      goal: goal ?? null,
       created_at: data.created_at,
       updated_at: data.updated_at,
     });
   } catch (e) {
     console.error('POST /api/users unexpected error', e);
+    return sendErr(res, 500, 'internal error');
+  }
+});
+
+// ユーザーログイン（ユーザーネームまたはメールで検索）
+app.post('/api/users/login', async (req, res) => {
+  const { username, email } = req.body ?? {};
+
+  if (!username && !email) {
+    return sendErr(res, 400, 'username or email is required');
+  }
+
+  try {
+    let query = supabase
+      .from('users')
+      .select('id, email, display_name, created_at, updated_at');
+
+    if (email) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      query = query.eq('email', normalizedEmail);
+    } else {
+      const normalizedUsername = String(username).trim();
+      query = query.eq('display_name', normalizedUsername);
+    }
+
+    const { data, error } = await query.single();
+
+    if (error || !data) {
+      return sendErr(res, 404, 'user not found');
+    }
+
+    return res.status(200).json({
+      id: data.id,
+      email: data.email,
+      display_name: data.display_name,
+      username: data.display_name,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+    });
+  } catch (e) {
+    console.error('POST /api/users/login unexpected error', e);
     return sendErr(res, 500, 'internal error');
   }
 });
