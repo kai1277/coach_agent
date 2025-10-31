@@ -2,11 +2,11 @@ id: STR-achiever
 strength: "達成欲 (Achiever)"
 domain: "実行力"
 summary:
-  look_like:
+  look_like: #あなたはこういう人
     - "‘終わらせること’に快感を覚える。常に動いていたい"
-  value_when_fit:
+  value_when_fit: #こうすると調子がいい
     - "継続的成果・高い自己管理"
-  risks_when_misfit:
+  risks_when_misfit: #こういうリスクがある
     - "休めず燃え尽き、タスク依存に陥る"
 signals:
   positive_signs:
@@ -38,9 +38,9 @@ management:
   metrics:
     - "完了率、自己申告達成感スコア"
 pairing:
-  synergize_with:
+  synergize_with: #このストレングスと合わさると、この理由で強い
     目標志向: "優先順位設定で走る方向を揃える"
-  watch_out_with:
+  watch_out_with: #このストレングスと合わさると、この理由でよくない
     内省: "考え込みすぎで停滞"
 examples:
   - "ToDo駆動で毎週進捗を安定維持"

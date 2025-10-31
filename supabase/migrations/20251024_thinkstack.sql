@@ -83,17 +83,7 @@ create index if not exists evidence_snippets_embed_idx
   on public.evidence_snippets using ivfflat (embedding vector_cosine_ops)
   with (lists = 100);
 
--- ============ 5) 評価／結論 ============
-create table if not exists public.evals (
-  session_id uuid references public.sessions(id) on delete cascade,
-  final_confidence numeric,
-  that_is_me_score int,
-  nps int,
-  notes text,
-  based_on jsonb,
-  created_at timestamp with time zone default now()
-);
-
+-- ============ 5) 結論 ============
 create table if not exists public.conclusions (
   session_id uuid unique references public.sessions(id) on delete cascade,
   you_are text,

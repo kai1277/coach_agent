@@ -60,15 +60,3 @@ create table if not exists public.gen_traces (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_traces_session_created on public.gen_traces(session_id, created_at);
-
--- HITLレビュー（人手評価）
-create table if not exists public.hitl_reviews (
-  id uuid primary key default gen_random_uuid(),
-  target_type text not null check (target_type in ('turn','trace')),
-  target_id uuid not null,                   -- turns.id or gen_traces.id を入れる
-  reviewer text,                             -- 例: email or user_id
-  rating int check (rating between 1 and 5),
-  comment text,
-  created_at timestamptz not null default now()
-);
-create index if not exists idx_reviews_target on public.hitl_reviews(target_type, target_id);
