@@ -676,6 +676,41 @@ app.get('/api/users/debug', async (_req, res) => {
 
 /* --------------------------------- User APIs -------------------------------- */
 
+type UserRowWithProfile = {
+  strength_1?: string | null;
+  strength_2?: string | null;
+  strength_3?: string | null;
+  strength_4?: string | null;
+  strength_5?: string | null;
+  age?: string | null;
+  gender?: string | null;
+  hometown?: string | null;
+};
+
+function buildStrengthsTop5(row: UserRowWithProfile): string[] {
+  return [
+    row.strength_1,
+    row.strength_2,
+    row.strength_3,
+    row.strength_4,
+    row.strength_5,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
+function buildBasicInfo(row: UserRowWithProfile): { age?: string; gender?: string; hometown?: string } {
+  const info: { age?: string; gender?: string; hometown?: string } = {};
+  if (row.age != null && String(row.age).trim() !== '') {
+    info.age = String(row.age).trim();
+  }
+  if (row.gender != null && String(row.gender).trim() !== '') {
+    info.gender = String(row.gender).trim();
+  }
+  if (row.hometown != null && String(row.hometown).trim() !== '') {
+    info.hometown = String(row.hometown).trim();
+  }
+  return info;
+}
+
 // ユーザー登録
 app.post('/api/users', async (req, res) => {
   const { email, display_name, username, department, role, goal } = req.body ?? {};
@@ -738,13 +773,8 @@ app.post('/api/users', async (req, res) => {
       display_name: data.display_name
     });
 
-    const strengthsTop5 = [
-      data.strength_1,
-      data.strength_2,
-      data.strength_3,
-      data.strength_4,
-      data.strength_5,
-    ].filter((s): s is string => !!s);
+    const strengthsTop5 = buildStrengthsTop5(data);
+    const basicInfo = buildBasicInfo(data);
 
     return res.status(201).json({
       id: data.id,
@@ -755,11 +785,7 @@ app.post('/api/users', async (req, res) => {
       role: data.role,
       goal: data.goal,
       strengthsTop5,
-      basicInfo: {
-        age: data.age,
-        gender: data.gender,
-        hometown: data.hometown,
-      },
+      basicInfo,
       created_at: data.created_at,
       updated_at: data.updated_at,
     });
@@ -780,7 +806,7 @@ app.post('/api/users/login', async (req, res) => {
   try {
     let query = supabase
       .from('users')
-      .select('id, email, display_name, profile_data, created_at, updated_at');
+      .select('id, email, display_name, department, role, goal, strength_1, strength_2, strength_3, strength_4, strength_5, age, gender, hometown, created_at, updated_at');
 
     if (email) {
       const normalizedEmail = String(email).trim().toLowerCase();
@@ -806,18 +832,19 @@ app.post('/api/users/login', async (req, res) => {
 
     console.log('[LOGIN] User found:', { id: data.id, email: data.email, display_name: data.display_name });
 
-    const profileData = data.profile_data || {};
+    const strengthsTop5 = buildStrengthsTop5(data);
+    const basicInfo = buildBasicInfo(data);
 
     return res.status(200).json({
       id: data.id,
       email: data.email,
       display_name: data.display_name,
       username: data.display_name,
-      department: profileData.department || null,
-      role: profileData.role || null,
-      goal: profileData.goal || null,
-      strengthsTop5: profileData.strengthsTop5 || [],
-      basicInfo: profileData.basicInfo || {},
+      department: data.department,
+      role: data.role,
+      goal: data.goal,
+      strengthsTop5,
+      basicInfo,
       created_at: data.created_at,
       updated_at: data.updated_at,
     });
@@ -833,34 +860,84 @@ app.patch('/api/users/:id', async (req, res) => {
   const { department, role, goal, strengthsTop5, basicInfo } = req.body ?? {};
 
   try {
-    // 既存のprofile_dataを取得
-    const existing = await supabase
-      .from('users')
-      .select('profile_data')
-      .eq('id', id)
-      .single();
+    const updateData: Record<string, any> = {};
 
-    if (existing.error || !existing.data) {
-      return sendErr(res, 404, 'user not found');
+    if (department !== undefined) {
+      updateData.department = department ?? null;
+    }
+    if (role !== undefined) {
+      updateData.role = role ?? null;
+    }
+    if (goal !== undefined) {
+      updateData.goal = goal ?? null;
     }
 
-    // 既存データとマージ
-    const currentProfileData = existing.data.profile_data || {};
-    const updatedProfileData = {
-      ...currentProfileData,
-      ...(department !== undefined && { department }),
-      ...(role !== undefined && { role }),
-      ...(goal !== undefined && { goal }),
-      ...(strengthsTop5 !== undefined && { strengthsTop5 }),
-      ...(basicInfo !== undefined && { basicInfo }),
-    };
+    if (strengthsTop5 !== undefined) {
+      if (!Array.isArray(strengthsTop5)) {
+        return sendErr(res, 400, 'strengthsTop5 must be an array');
+      }
+      const normalizedStrengths = strengthsTop5
+        .map((item) => String(item).trim())
+        .filter((item) => item.length > 0)
+        .slice(0, 5);
 
-    // 更新
+      updateData.strength_1 = normalizedStrengths[0] ?? null;
+      updateData.strength_2 = normalizedStrengths[1] ?? null;
+      updateData.strength_3 = normalizedStrengths[2] ?? null;
+      updateData.strength_4 = normalizedStrengths[3] ?? null;
+      updateData.strength_5 = normalizedStrengths[4] ?? null;
+    }
+
+    if (basicInfo !== undefined) {
+      const info = typeof basicInfo === 'object' && basicInfo !== null ? basicInfo as Record<string, any> : {};
+      const normalizeField = (key: string) => {
+        const value = info[key];
+        if (value == null) return null;
+        const trimmed = String(value).trim();
+        return trimmed.length > 0 ? trimmed : null;
+      };
+
+      updateData.age = normalizeField('age');
+      updateData.gender = normalizeField('gender');
+      updateData.hometown = normalizeField('hometown');
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      const { data: current, error: fetchError } = await supabase
+        .from('users')
+        .select('id, email, display_name, department, role, goal, strength_1, strength_2, strength_3, strength_4, strength_5, age, gender, hometown, created_at, updated_at')
+        .eq('id', id)
+        .single();
+
+      if (fetchError || !current) {
+        return sendErr(res, 404, 'user not found');
+      }
+
+      const strengthsTop5Response = buildStrengthsTop5(current);
+      const basicInfoResponse = buildBasicInfo(current);
+
+      return res.status(200).json({
+        id: current.id,
+        email: current.email,
+        display_name: current.display_name,
+        username: current.display_name,
+        department: current.department,
+        role: current.role,
+        goal: current.goal,
+        strengthsTop5: strengthsTop5Response,
+        basicInfo: basicInfoResponse,
+        created_at: current.created_at,
+        updated_at: current.updated_at,
+      });
+    }
+
+    updateData.updated_at = new Date().toISOString();
+
     const { data, error } = await supabase
       .from('users')
-      .update({ profile_data: updatedProfileData })
+      .update(updateData)
       .eq('id', id)
-      .select('id, email, display_name, profile_data, created_at, updated_at')
+      .select('id, email, display_name, department, role, goal, strength_1, strength_2, strength_3, strength_4, strength_5, age, gender, hometown, created_at, updated_at')
       .single();
 
     if (error) {
@@ -872,18 +949,19 @@ app.patch('/api/users/:id', async (req, res) => {
       return sendErr(res, 500, 'failed to update user');
     }
 
-    const profileData = data.profile_data || {};
+    const strengthsTop5Response = buildStrengthsTop5(data);
+    const basicInfoResponse = buildBasicInfo(data);
 
     return res.status(200).json({
       id: data.id,
       email: data.email,
       display_name: data.display_name,
       username: data.display_name,
-      department: profileData.department || null,
-      role: profileData.role || null,
-      goal: profileData.goal || null,
-      strengthsTop5: profileData.strengthsTop5 || [],
-      basicInfo: profileData.basicInfo || {},
+      department: data.department,
+      role: data.role,
+      goal: data.goal,
+      strengthsTop5: strengthsTop5Response,
+      basicInfo: basicInfoResponse,
       created_at: data.created_at,
       updated_at: data.updated_at,
     });
