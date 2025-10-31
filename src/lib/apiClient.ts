@@ -6,6 +6,7 @@ import type {
   ApiError,
   Demographics,
   Turn,
+  User,
 } from "../types/api";
 
 const API_MODE = (import.meta as any).env?.VITE_API_MODE ?? "mock"; // 'mock' | 'real'
@@ -168,6 +169,14 @@ export const api = {
     },
     remove(id: string) {
       return request<{ ok: true }>(`/api/sessions/${id}`, { method: "DELETE" });
+    },
+  },
+  users: {
+    register(payload: { email: string; display_name: string }) {
+      return request<User>("/api/users", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
     },
   },
 };

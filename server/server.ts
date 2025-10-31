@@ -654,14 +654,70 @@ app.use(express.json());
 
 app.get('/health', (_req, res) => res.send('ok'));
 
+/* --------------------------------- User APIs -------------------------------- */
+
+app.post('/api/users', async (req, res) => {
+  const { email, display_name } = req.body ?? {};
+
+  try {
+    ensureString(email, 'email');
+    ensureString(display_name, 'display_name');
+  } catch (e: any) {
+    return sendErr(res, 400, e?.message ?? 'invalid payload');
+  }
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const normalizedDisplayName = String(display_name).trim();
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        email: normalizedEmail,
+        display_name: normalizedDisplayName,
+      })
+      .select('id, email, display_name, created_at, updated_at')
+      .single();
+
+    if (error) {
+      if ((error as any)?.code === '23505') {
+        return sendErr(res, 409, 'email already registered');
+      }
+      console.error('POST /api/users insert error', error);
+      return sendErr(res, 500, 'failed to create user');
+    }
+
+    if (!data) {
+      return sendErr(res, 500, 'failed to create user');
+    }
+
+    return res.status(201).json({
+      id: data.id,
+      email: data.email,
+      display_name: data.display_name,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+    });
+  } catch (e) {
+    console.error('POST /api/users unexpected error', e);
+    return sendErr(res, 500, 'internal error');
+  }
+});
+
 /* ------------------------------- Session APIs ------------------------------- */
 
 app.post('/api/sessions', async (req, res) => {
   try {
-    const { transcript, context, strengths_top5, demographics } = req.body ?? {};
+    const { transcript, context, strengths_top5, demographics, userId } = req.body ?? {};
     if (!transcript) return res.status(400).json({ error: 'transcript is required' });
 
     const ctx = context ?? 'general';
+    let user_id: string | null = null;
+    if (typeof userId === 'string' && userId.trim().length > 0) {
+      user_id = userId.trim();
+    } else if (userId != null) {
+      return res.status(400).json({ error: 'userId must be a string' });
+    }
 
     const { data, error } = await supabase
       .from('sessions')
@@ -670,6 +726,7 @@ app.post('/api/sessions', async (req, res) => {
         summary: null,
         max_questions: 8,  // デフォルト8問
         asked_count: 0,    // 初期値0
+        user_id,
         metadata: {
           context: ctx,
           strengths_top5,
@@ -682,6 +739,9 @@ app.post('/api/sessions', async (req, res) => {
       .single();
 
     if (error) {
+      if ((error as any)?.code === '23503') {
+        return res.status(400).json({ error: 'user not found for provided userId' });
+      }
       console.error('supabase insert error', error);
       return res.status(500).json({ error: 'failed to create session' });
     }
