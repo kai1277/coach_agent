@@ -14,9 +14,7 @@ import {
   CardTitle,
   Input,
   Muted,
-  ScrollArea,
   SectionLabel,
-  Textarea,
   cn,
 } from "../../../ui/primitives";
 import { useSearchParams } from "react-router-dom";
@@ -259,7 +257,7 @@ function getProgress(
 export default function SessionPage() {
   const navigate = useNavigate();
 
-  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const showToast = useToast();
 
@@ -652,11 +650,6 @@ export default function SessionPage() {
   const personaSafe = safeSession.persona;
   const hasSession = Boolean(sessionId);
   const currentQuestion = getCurrentQuestion(loopState);
-  const loopProgress = hasSession
-    ? getProgress(loopState, safeSession.loop?.maxQuestions ?? 0)
-    : { asked: 0, max: safeSession.loop?.maxQuestions ?? 0 };
-  const loopInFlight =
-    loopStarted && loopState && "done" in loopState && loopState.done === false;
   const loopFinished =
     loopStarted && loopState && "done" in loopState && loopState.done === true;
   const loopHeadline =
@@ -665,7 +658,7 @@ export default function SessionPage() {
       : null;
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-slate-900">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-12 lg:px-8">
         <header className="flex flex-col gap-3 text-left">
           <SectionLabel>AI COACH LOOP</SectionLabel>
@@ -908,31 +901,22 @@ export default function SessionPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="flex h-[680px] flex-col overflow-hidden p-0 bg-white shadow-lg">
-                <div className="flex-shrink-0 border-b border-slate-200 bg-white px-6 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-lg font-semibold text-slate-800">
-                        コーチとの対話
-                      </h2>
-                    </div>
-                    {loopInFlight && (
-                      <span className="text-xs text-slate-400">
-                        進捗 {loopProgress.asked}/{loopProgress.max || "—"}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden bg-[#FAFAFA]">
-                  <ScrollArea className="h-full px-6 py-6">
+              <div className="flex h-[680px] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg">
+                {/* Chat Messages Area */}
+                <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                  <div className="mx-auto max-w-4xl space-y-6">
                     {turnsLoading ? (
-                      <Muted>履歴を読み込んでいます…</Muted>
+                      <div className="flex items-center justify-center py-8">
+                        <Muted>履歴を読み込んでいます…</Muted>
+                      </div>
                     ) : chatMessages.length === 0 ? (
-                      <Muted>
-                        最初の質問を準備しています。少々お待ちください。
-                      </Muted>
+                      <div className="flex items-center justify-center py-8">
+                        <Muted>
+                          最初の質問を準備しています。少々お待ちください。
+                        </Muted>
+                      </div>
                     ) : (
-                      <div className="space-y-6 pb-4">
+                      <>
                         {chatMessages.map((msg) => {
                           const isAssistant = msg.role === "assistant";
                           const timestamp =
@@ -942,116 +926,130 @@ export default function SessionPage() {
                             <div
                               key={msg.id}
                               className={cn(
-                                "flex gap-3 items-start",
+                                "flex gap-3",
                                 isAssistant ? "justify-start" : "justify-end"
                               )}
                             >
                               {isAssistant && (
-                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-400 to-pink-500 text-sm font-semibold text-white shadow-md">
-                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                                    <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
-                                  </svg>
-                                </div>
-                              )}
-                              <div className="flex flex-col max-w-[75%]">
-                                <div
-                                  className={cn(
-                                    "rounded-2xl px-4 py-3 text-[15px] leading-relaxed transition",
-                                    isAssistant
-                                      ? "bg-[#4A90E2] text-white shadow-[0_2px_12px_rgba(74,144,226,0.3)] rounded-tl-sm"
-                                      : "bg-[#F0F0F0] text-[#333333] shadow-sm rounded-tr-sm"
-                                  )}
-                                >
-                                  <div className="whitespace-pre-wrap break-words">
-                                    {msg.text}
+                                <div className="h-10 w-10 shrink-0">
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500 text-white">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                                      <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
+                                    </svg>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-2 mt-1.5 px-1">
-                                  {timestamp ? (
-                                    <span className="text-[11px] text-slate-400">
-                                      {timestamp}
-                                    </span>
-                                  ) : null}
-                                  {msg.pending && !msg.createdAt ? (
-                                    <span className="text-[11px] text-slate-400">
-                                      送信準備中…
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </div>
-                              {!isAssistant && (
-                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-300 to-slate-400 text-sm font-semibold text-white shadow-md">
-                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                                    <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
-                                  </svg>
-                                </div>
                               )}
+
+                              <div
+                                className={cn(
+                                  "flex flex-col",
+                                  isAssistant ? "items-start" : "items-end",
+                                  "max-w-[70%]"
+                                )}
+                              >
+                                <div
+                                  className={cn(
+                                    "group relative rounded-2xl px-4 py-3",
+                                    isAssistant
+                                      ? "bg-chat-other text-chat-other-foreground"
+                                      : "bg-chat-user text-chat-user-foreground"
+                                  )}
+                                >
+                                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                    {msg.text}
+                                  </p>
+                                </div>
+                                {timestamp && (
+                                  <span className="mt-1 text-xs text-muted-foreground">
+                                    {timestamp}
+                                  </span>
+                                )}
+                                {msg.pending && !msg.createdAt && (
+                                  <span className="mt-1 text-xs text-muted-foreground">
+                                    送信準備中…
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
                         <div ref={chatEndRef} />
-                      </div>
+                      </>
                     )}
-                  </ScrollArea>
+                  </div>
                 </div>
-                <div className="flex-shrink-0 border-t border-slate-200 bg-white px-6 py-4">
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
-                        submitCurrentAnswer(currentQuestion?.id);
-                      }
-                    }}
-                    className="flex items-end gap-3"
-                  >
-                    <button
-                      type="button"
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                      aria-label="添付ファイル"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                        <path fillRule="evenodd" d="M18.97 3.659a2.25 2.25 0 00-3.182 0l-10.94 10.94a3.75 3.75 0 105.304 5.303l7.693-7.693a.75.75 0 011.06 1.06l-7.693 7.693a5.25 5.25 0 11-7.424-7.424l10.939-10.94a3.75 3.75 0 115.303 5.304L9.097 18.835l-.008.008-.007.007-.002.002-.003.002A2.25 2.25 0 015.91 15.66l7.81-7.81a.75.75 0 011.061 1.06l-7.81 7.81a.75.75 0 001.054 1.068L18.97 6.84a2.25 2.25 0 000-3.182z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                    <Textarea
-                      ref={messageInputRef}
-                      placeholder={
-                        loopBusy
-                          ? "処理中です..."
-                          : !currentQuestion?.id
-                          ? "次の質問を読み込んでいます..."
-                          : "I have a meeting right now"
-                      }
-                      value={answerInput}
-                      onChange={(e) => setAnswerInput(e.target.value)}
-                      disabled={loopBusy || !currentQuestion?.id}
-                      rows={1}
-                      className="flex-1 resize-none rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
-                            submitCurrentAnswer(currentQuestion?.id);
-                          }
+
+                {/* Input Area */}
+                <div className="border-t bg-background p-4">
+                  <div className="mx-auto max-w-4xl">
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
+                          submitCurrentAnswer(currentQuestion?.id);
                         }
                       }}
-                    />
-                    <button
-                      type="submit"
-                      disabled={loopBusy || !currentQuestion?.id || !answerInput.trim()}
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#4A90E2] text-white shadow-md transition hover:bg-[#3A7BC8] disabled:bg-slate-300 disabled:cursor-not-allowed"
-                      aria-label="送信"
+                      className="flex items-center gap-2"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                        <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                      </svg>
-                    </button>
-                  </form>
-                  {loopError && (
-                    <Muted className="mt-3 text-rose-400">{loopError}</Muted>
-                  )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                          <path fillRule="evenodd" d="M18.97 3.659a2.25 2.25 0 00-3.182 0l-10.94 10.94a3.75 3.75 0 105.304 5.303l7.693-7.693a.75.75 0 011.06 1.06l-7.693 7.693a5.25 5.25 0 11-7.424-7.424l10.939-10.94a3.75 3.75 0 115.303 5.304L9.097 18.835l-.008.008-.007.007-.002.002-.003.002A2.25 2.25 0 015.91 15.66l7.81-7.81a.75.75 0 011.061 1.06l-7.81 7.81a.75.75 0 001.054 1.068L18.97 6.84a2.25 2.25 0 000-3.182z" clipRule="evenodd" />
+                        </svg>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                          <path fillRule="evenodd" d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z" clipRule="evenodd" />
+                        </svg>
+                      </Button>
+                      <Input
+                        ref={messageInputRef}
+                        value={answerInput}
+                        onChange={(e) => setAnswerInput(e.target.value)}
+                        placeholder={
+                          loopBusy
+                            ? "処理中です..."
+                            : !currentQuestion?.id
+                            ? "次の質問を読み込んでいます..."
+                            : "回答を入力してください..."
+                        }
+                        disabled={loopBusy || !currentQuestion?.id}
+                        className="flex-1"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
+                              submitCurrentAnswer(currentQuestion?.id);
+                            }
+                          }
+                        }}
+                      />
+                      <Button
+                        type="submit"
+                        size="icon"
+                        disabled={loopBusy || !currentQuestion?.id || !answerInput.trim()}
+                        className="shrink-0 bg-chat-send hover:bg-chat-send/90"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                          <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                        </svg>
+                      </Button>
+                    </form>
+                    {loopError && (
+                      <p className="mt-2 text-sm text-destructive">{loopError}</p>
+                    )}
+                  </div>
                 </div>
-              </Card>
+              </div>
             )}
           </div>
 
