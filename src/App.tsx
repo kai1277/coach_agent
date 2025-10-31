@@ -2,6 +2,7 @@ import React from "react";
 import SessionCards from "./features/coach/components/SessionCards";
 import HealthCheck from "./components/HealthCheck";
 import type { SessionGetResponse } from "./types/api";
+import { STRENGTH_THEMES } from "./features/coach/constants/strengths";
 
 type AppStage = "login" | "register" | "userInfo" | "strengths" | "session";
 
@@ -442,6 +443,12 @@ function StrengthsView({ user, onSave, onBack }: StrengthsViewProps) {
     });
   };
 
+  // 選択済みの資質を除外したリストを生成
+  const getAvailableStrengths = (currentIndex: number) => {
+    const selectedStrengths = strengths.filter((s, i) => s && i !== currentIndex);
+    return STRENGTH_THEMES.filter(theme => !selectedStrengths.includes(theme));
+  };
+
   return (
     <div className="max-w-2xl mx-auto mt-12 space-y-6">
       <h1 className="text-2xl font-semibold">ストレングス Top5・基本情報</h1>
@@ -449,19 +456,32 @@ function StrengthsView({ user, onSave, onBack }: StrengthsViewProps) {
         <div className="space-y-3 rounded-lg border p-4">
           <h2 className="text-lg font-medium">ストレングス Top5</h2>
           <p className="text-sm text-gray-600">
-            特徴的だと思う資質を5つまで入力してください。
+            あなたの強みとなる資質を5つまで選択してください。
           </p>
           <div className="space-y-2">
             {strengths.map((strength, index) => (
-              <input
-                key={index}
-                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring"
-                value={strength}
-                onChange={(event) =>
-                  handleStrengthChange(index, event.target.value)
-                }
-                placeholder={`資質 ${index + 1}`}
-              />
+              <div key={index} className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-gray-700 w-6">
+                  {index + 1}.
+                </span>
+                <select
+                  className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring"
+                  value={strength}
+                  onChange={(event) =>
+                    handleStrengthChange(index, event.target.value)
+                  }
+                >
+                  <option value="">選択してください</option>
+                  {strength && !STRENGTH_THEMES.includes(strength as any) && (
+                    <option value={strength}>{strength}</option>
+                  )}
+                  {getAvailableStrengths(index).map((theme) => (
+                    <option key={theme} value={theme}>
+                      {theme}
+                    </option>
+                  ))}
+                </select>
+              </div>
             ))}
           </div>
         </div>
