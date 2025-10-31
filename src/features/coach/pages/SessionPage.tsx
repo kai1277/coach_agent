@@ -408,7 +408,9 @@ export default function SessionPage() {
     console.log("loopState changed:", loopState);
     console.log("currentQuestion:", getCurrentQuestion(loopState));
     console.log("loopBusy:", loopBusy);
-  }, [loopState, loopBusy]);
+    console.log("chatMessages:", chatMessages);
+    console.log("turns:", turns);
+  }, [loopState, loopBusy, chatMessages, turns]);
 
   // 復元 → 正規化して保持
   useEffect(() => {
@@ -542,28 +544,6 @@ export default function SessionPage() {
     });
   };
 
-  // 取り消し
-  const undo = async () => {
-    if (!sessionId) return;
-    setLoopBusy(true);
-    setLoopError(null);
-    try {
-      const data = await api.sessions.undo(sessionId);
-      setLoopState(data as any);
-      showToast("直前の回答を取り消しました", { type: "info" });
-      // 取り消し後のログとセッションの最新化
-      qc.invalidateQueries({ queryKey: ["turns", sessionId] });
-      qc.invalidateQueries({ queryKey: ["session", sessionId] });
-      setAnswerInput("");
-      setTimeout(() => messageInputRef.current?.focus(), 0);
-    } catch (e: any) {
-      const msg = String(e?.message || e);
-      setLoopError(msg);
-      showToast(`取り消しエラー：${msg}`, { type: "error" });
-    } finally {
-      setLoopBusy(false);
-    }
-  };
 
   // クリア
   const resetAll = () => {
@@ -685,7 +665,7 @@ export default function SessionPage() {
       : null;
 
   return (
-    <div className="min-h-screen bg-[#f5f7fb] text-slate-900">
+    <div className="min-h-screen bg-[#FAFAFA] text-slate-900">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-12 lg:px-8">
         <header className="flex flex-col gap-3 text-left">
           <SectionLabel>AI COACH LOOP</SectionLabel>
@@ -928,23 +908,22 @@ export default function SessionPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="flex h-[680px] flex-col overflow-hidden p-0">
-                <div className="flex-shrink-0 border-b border-slate-100 bg-white/70 px-6 py-4">
+              <Card className="flex h-[680px] flex-col overflow-hidden p-0 bg-white shadow-lg">
+                <div className="flex-shrink-0 border-b border-slate-200 bg-white px-6 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <SectionLabel subtle>COACH</SectionLabel>
-                      <h2 className="text-xl font-semibold text-slate-900">
+                      <h2 className="text-lg font-semibold text-slate-800">
                         コーチとの対話
                       </h2>
                     </div>
                     {loopInFlight && (
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-400">
                         進捗 {loopProgress.asked}/{loopProgress.max || "—"}
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
+                <div className="flex-1 min-h-0 overflow-hidden bg-[#FAFAFA]">
                   <ScrollArea className="h-full px-6 py-6">
                     {turnsLoading ? (
                       <Muted>履歴を読み込んでいます…</Muted>
@@ -963,52 +942,48 @@ export default function SessionPage() {
                             <div
                               key={msg.id}
                               className={cn(
-                                "flex gap-3",
+                                "flex gap-3 items-start",
                                 isAssistant ? "justify-start" : "justify-end"
                               )}
                             >
                               {isAssistant && (
-                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-500 text-xs font-semibold text-white shadow-sm">
-                                  AI
+                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-400 to-pink-500 text-sm font-semibold text-white shadow-md">
+                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+                                    <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
+                                  </svg>
                                 </div>
                               )}
-                              <div
-                                className={cn(
-                                  "max-w-[80%] rounded-3xl px-5 py-4 text-sm leading-relaxed transition",
-                                  isAssistant
-                                    ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-[0_18px_40px_-24px_rgba(37,99,235,0.8)]"
-                                    : "border border-slate-200 bg-white text-slate-800 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)]"
-                                )}
-                              >
-                                <div className="whitespace-pre-wrap">
-                                  {msg.text}
+                              <div className="flex flex-col max-w-[75%]">
+                                <div
+                                  className={cn(
+                                    "rounded-2xl px-4 py-3 text-[15px] leading-relaxed transition",
+                                    isAssistant
+                                      ? "bg-[#4A90E2] text-white shadow-[0_2px_12px_rgba(74,144,226,0.3)] rounded-tl-sm"
+                                      : "bg-[#F0F0F0] text-[#333333] shadow-sm rounded-tr-sm"
+                                  )}
+                                >
+                                  <div className="whitespace-pre-wrap break-words">
+                                    {msg.text}
+                                  </div>
                                 </div>
-                                {msg.pending && !msg.createdAt ? (
-                                  <div
-                                    className={cn(
-                                      "mt-2 text-[10px]",
-                                      isAssistant ? "text-sky-100/80" : "text-slate-400"
-                                    )}
-                                  >
-                                    送信準備中…
-                                  </div>
-                                ) : null}
-                                {timestamp ? (
-                                  <div
-                                    className={cn(
-                                      "mt-3 text-[10px]",
-                                      isAssistant
-                                        ? "text-sky-100/80"
-                                        : "text-slate-400"
-                                    )}
-                                  >
-                                    {timestamp}
-                                  </div>
-                                ) : null}
+                                <div className="flex items-center gap-2 mt-1.5 px-1">
+                                  {timestamp ? (
+                                    <span className="text-[11px] text-slate-400">
+                                      {timestamp}
+                                    </span>
+                                  ) : null}
+                                  {msg.pending && !msg.createdAt ? (
+                                    <span className="text-[11px] text-slate-400">
+                                      送信準備中…
+                                    </span>
+                                  ) : null}
+                                </div>
                               </div>
                               {!isAssistant && (
-                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
-                                  You
+                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-300 to-slate-400 text-sm font-semibold text-white shadow-md">
+                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+                                    <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
+                                  </svg>
                                 </div>
                               )}
                             </div>
@@ -1019,13 +994,25 @@ export default function SessionPage() {
                     )}
                   </ScrollArea>
                 </div>
-                <div className="flex-shrink-0 border-t border-slate-100 bg-white/70 px-6 py-5">
+                <div className="flex-shrink-0 border-t border-slate-200 bg-white px-6 py-4">
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
+                        submitCurrentAnswer(currentQuestion?.id);
+                      }
                     }}
-                    className="space-y-4"
+                    className="flex items-end gap-3"
                   >
+                    <button
+                      type="button"
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      aria-label="添付ファイル"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                        <path fillRule="evenodd" d="M18.97 3.659a2.25 2.25 0 00-3.182 0l-10.94 10.94a3.75 3.75 0 105.304 5.303l7.693-7.693a.75.75 0 011.06 1.06l-7.693 7.693a5.25 5.25 0 11-7.424-7.424l10.939-10.94a3.75 3.75 0 115.303 5.304L9.097 18.835l-.008.008-.007.007-.002.002-.003.002A2.25 2.25 0 015.91 15.66l7.81-7.81a.75.75 0 011.061 1.06l-7.81 7.81a.75.75 0 001.054 1.068L18.97 6.84a2.25 2.25 0 000-3.182z" clipRule="evenodd" />
+                      </svg>
+                    </button>
                     <Textarea
                       ref={messageInputRef}
                       placeholder={
@@ -1033,59 +1020,33 @@ export default function SessionPage() {
                           ? "処理中です..."
                           : !currentQuestion?.id
                           ? "次の質問を読み込んでいます..."
-                          : "回答を入力してください..."
+                          : "I have a meeting right now"
                       }
                       value={answerInput}
                       onChange={(e) => setAnswerInput(e.target.value)}
                       disabled={loopBusy || !currentQuestion?.id}
-                      rows={5}
+                      rows={1}
+                      className="flex-1 resize-none rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
+                            submitCurrentAnswer(currentQuestion?.id);
+                          }
+                        }
+                      }}
                     />
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <Muted className="text-xs text-slate-500">
-                        Enterキーでは送信されません。ボタンを押して回答を送信してください。
-                      </Muted>
-                      <Button
-                        type="button"
-                        onClick={async () => {
-                          await submitCurrentAnswer(currentQuestion?.id);
-                        }}
-                        disabled={loopBusy || !currentQuestion?.id}
-                        className="w-full sm:w-auto"
-                      >
-                        {loopBusy ? "送信中…" : "回答を送信"}
-                      </Button>
-                    </div>
+                    <button
+                      type="submit"
+                      disabled={loopBusy || !currentQuestion?.id || !answerInput.trim()}
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#4A90E2] text-white shadow-md transition hover:bg-[#3A7BC8] disabled:bg-slate-300 disabled:cursor-not-allowed"
+                      aria-label="送信"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                        <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                      </svg>
+                    </button>
                   </form>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={loopBusy}
-                      onClick={fetchNext}
-                    >
-                      次の質問を取得
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={loopBusy}
-                      onClick={undo}
-                    >
-                      直前の回答を取り消す
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        qc.invalidateQueries({ queryKey: ["turns", sessionId] })
-                      }
-                    >
-                      ログを再読み込み
-                    </Button>
-                  </div>
                   {loopError && (
                     <Muted className="mt-3 text-rose-400">{loopError}</Muted>
                   )}
