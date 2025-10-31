@@ -403,11 +403,14 @@ export default function SessionPage() {
 
   // デバッグ: loopStateの変化を監視
   useEffect(() => {
-    console.log("loopState changed:", loopState);
+    console.log("=== Debug Info ===");
+    console.log("loopState:", loopState);
     console.log("currentQuestion:", getCurrentQuestion(loopState));
     console.log("loopBusy:", loopBusy);
     console.log("chatMessages:", chatMessages);
     console.log("turns:", turns);
+    console.log("Input disabled:", loopBusy || !getCurrentQuestion(loopState)?.id);
+    console.log("================");
   }, [loopState, loopBusy, chatMessages, turns]);
 
   // 復元 → 正規化して保持
