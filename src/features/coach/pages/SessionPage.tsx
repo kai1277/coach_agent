@@ -928,9 +928,6 @@ export default function SessionPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
-                      submitCurrentAnswer(currentQuestion?.id);
-                    }
                   }
                 }}
               />
