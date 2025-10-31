@@ -495,33 +495,6 @@ async function fetchAnswerHistory(session_id: string) {
   }));
 }
 
-/* ========== Profiler ========== */
-async function runProfiler(opts: {
-  strengths_top5?: string[];
-  demographics?: Record<string, any>;
-}) {
-  const { strengths_top5 = [], demographics = {} } = opts;
-  const cases = await ragCasebook(strengths_top5, demographics, 4);
-  const context = cases.map((c: any, i: number) =>
-    `CARD${i+1} ${c.title}\nHypo:${JSON.stringify(c.hypotheses)}\nProbes:${JSON.stringify(c.probes)}`
-  ).join('\n---\n');
-
-  const system = `あなたはプロファイラーです。入力の Top5 と基本情報、CONTEXT を参考に、日本語で「仮説」を3件出力します。JSONのみ。`;
-  const user = `Top5: ${JSON.stringify(strengths_top5)}
-Demographics: ${JSON.stringify(demographics)}
-[CONTEXT]
-${context || '(なし)'}
-出力: {"hypotheses":["...","...","..."]}`;
-
-  const r = await openai.chat.completions.create({
-    model: OPENAI_MODEL, temperature: 0.2,
-    messages: [{ role:'system', content: system }, { role:'user', content: user }]
-  });
-  const parsed = extractJson(r.choices?.[0]?.message?.content ?? '{}') ?? {};
-  const hypotheses: string[] = Array.isArray(parsed.hypotheses) ? parsed.hypotheses.slice(0,3) : [];
-  return { hypotheses, rag_cases: cases };
-}
-
 /* ========== Interviewer（次の良問） ========== */
 async function runInterviewer(opts: {
   hypotheses?: string[];
