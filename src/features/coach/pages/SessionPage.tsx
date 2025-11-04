@@ -203,17 +203,6 @@ function getCurrentQuestion(
   return null;
 }
 
-/** 共通化：進捗 asked / max を取得（max は推定も可） */
-function getProgress(
-  ls: LoopFetchNew | null,
-  fallbackMax?: number
-) {
-  if (!ls) return { asked: 0, max: fallbackMax ?? 0 };
-  if ("asked" in ls)
-    return { asked: (ls as any).asked ?? 0, max: fallbackMax ?? 0 };
-  return { asked: 0, max: fallbackMax ?? 0 };
-}
-
 export default function SessionPage() {
   const navigate = useNavigate();
 
@@ -249,9 +238,7 @@ export default function SessionPage() {
   const [loopStarted, setLoopStarted] = useState(false);
   const [loopBusy, setLoopBusy] = useState(false);
   const [loopError, setLoopError] = useState<string | null>(null);
-  const [loopState, setLoopState] = useState<LoopFetchNew | null>(
-    null
-  );
+  const [loopState, setLoopState] = useState<LoopFetchNew | null>(null);
 
   // URL パラメータから復元
   const [sp, setSp] = useSearchParams();
@@ -369,7 +356,10 @@ export default function SessionPage() {
     console.log("loopBusy:", loopBusy);
     console.log("chatMessages:", chatMessages);
     console.log("turns:", turns);
-    console.log("Input disabled:", loopBusy || !getCurrentQuestion(loopState)?.id);
+    console.log(
+      "Input disabled:",
+      loopBusy || !getCurrentQuestion(loopState)?.id
+    );
     console.log("================");
   }, [loopState, loopBusy, chatMessages, turns]);
 
@@ -505,7 +495,6 @@ export default function SessionPage() {
     });
   };
 
-
   // クリア
   const resetAll = () => {
     setSessionId(null);
@@ -532,7 +521,7 @@ export default function SessionPage() {
     // advance.reset();
     showToast("セッションをクリアしました", { type: "info" });
     // ユーザー情報ページに戻る
-    navigate('/user-info');
+    navigate("/user-info");
   };
 
   const PersonaView = ({ profile }: { profile: StrengthProfile }) => {
@@ -634,7 +623,7 @@ export default function SessionPage() {
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => navigate('/user-info')}
+              onClick={() => navigate("/user-info")}
             >
               過去のセッション
             </Button>
@@ -649,9 +638,7 @@ export default function SessionPage() {
               </div>
             ) : chatMessages.length === 0 ? (
               <div className="flex items-center justify-center py-8">
-                <Muted>
-                  最初の質問を準備しています。少々お待ちください。
-                </Muted>
+                <Muted>最初の質問を準備しています。少々お待ちください。</Muted>
               </div>
             ) : (
               <>
@@ -671,8 +658,17 @@ export default function SessionPage() {
                       {isAssistant && (
                         <div className="h-10 w-10 shrink-0">
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500 text-white">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-                              <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="h-6 w-6"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z"
+                                clipRule="evenodd"
+                              />
                             </svg>
                           </div>
                         </div>
@@ -714,98 +710,105 @@ export default function SessionPage() {
                 <div ref={chatEndRef} />
 
                 {/* 診断完了後の結果表示 */}
-                {loopFinished && loopState && "done" in loopState && loopState.done === true && (
-                  <Card aria-live="polite" className="mt-6">
-                    <CardHeader>
-                      <CardTitle>
-                        {loopHeadline || "AIマネージャーのまとめ"}
-                      </CardTitle>
-                      <CardDescription>
-                        診断が完了しました。AIマネージャーからの提案です。
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-5">
-                      {isNewDone(loopState) && (
-                        <>
-                          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
-                            <div className="text-sm font-semibold text-sky-700">
-                              あなたはこういう人です！
-                            </div>
-                            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                              {loopState.metadata.next_step.summary}
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            <div className="text-sm font-semibold text-slate-800">
-                              やってみよう！
-                            </div>
-                            <div className="space-y-2">
-                              {(loopState.metadata.next_step.next_week_plan
-                                ?.length
-                                ? loopState.metadata.next_step.next_week_plan
-                                : loopState.metadata.next_step.management?.do ||
-                                  []
-                              ).map((s, i) => (
-                                <Button
-                                  key={`${s}-${i}`}
-                                  type="button"
-                                  variant="secondary"
-                                  className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
-                                  onClick={() => {
-                                    navigator.clipboard
-                                      ?.writeText(s)
-                                      .then(() =>
-                                        showToast("コピーしました", {
-                                          type: "success",
-                                        })
-                                      )
-                                      .catch(() =>
-                                        showToast("コピーできませんでした", {
-                                          type: "error",
-                                        })
-                                      );
-                                  }}
-                                >
-                                  {s}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                          {loopState.metadata.next_step.management?.dont
-                            ?.length ? (
-                            <div className="space-y-2">
-                              <div className="text-sm font-semibold text-slate-800">
-                                避けたいこと
+                {loopFinished &&
+                  loopState &&
+                  "done" in loopState &&
+                  loopState.done === true && (
+                    <Card aria-live="polite" className="mt-6">
+                      <CardHeader>
+                        <CardTitle>
+                          {loopHeadline || "AIマネージャーのまとめ"}
+                        </CardTitle>
+                        <CardDescription>
+                          診断が完了しました。AIマネージャーからの提案です。
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-5">
+                        {isNewDone(loopState) && (
+                          <>
+                            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                              <div className="text-sm font-semibold text-sky-700">
+                                あなたはこういう人です！
                               </div>
-                              <ul className="space-y-1 text-sm text-slate-600">
-                                {loopState.metadata.next_step.management.dont.map(
-                                  (d, i) => (
-                                    <li key={i}>{d}</li>
-                                  )
-                                )}
-                              </ul>
+                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                {loopState.metadata.next_step.summary}
+                              </div>
                             </div>
-                          ) : null}
-                        </>
-                      )}
-                    </CardContent>
-                    <CardFooter className="border-t border-slate-100 pt-6 flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setLoopStarted(false);
-                          setLoopState(null);
-                        }}
-                      >
-                        もう一度診断する
-                      </Button>
-                      <Button type="button" variant="ghost" onClick={resetAll}>
-                        セッションを終了
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                )}
+                            <div className="space-y-3">
+                              <div className="text-sm font-semibold text-slate-800">
+                                やってみよう！
+                              </div>
+                              <div className="space-y-2">
+                                {(loopState.metadata.next_step.next_week_plan
+                                  ?.length
+                                  ? loopState.metadata.next_step.next_week_plan
+                                  : loopState.metadata.next_step.management
+                                      ?.do || []
+                                ).map((s, i) => (
+                                  <Button
+                                    key={`${s}-${i}`}
+                                    type="button"
+                                    variant="secondary"
+                                    className="w-full justify-start rounded-2xl border border-sky-200 bg-white text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+                                    onClick={() => {
+                                      navigator.clipboard
+                                        ?.writeText(s)
+                                        .then(() =>
+                                          showToast("コピーしました", {
+                                            type: "success",
+                                          })
+                                        )
+                                        .catch(() =>
+                                          showToast("コピーできませんでした", {
+                                            type: "error",
+                                          })
+                                        );
+                                    }}
+                                  >
+                                    {s}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                            {loopState.metadata.next_step.management?.dont
+                              ?.length ? (
+                              <div className="space-y-2">
+                                <div className="text-sm font-semibold text-slate-800">
+                                  避けたいこと
+                                </div>
+                                <ul className="space-y-1 text-sm text-slate-600">
+                                  {loopState.metadata.next_step.management.dont.map(
+                                    (d, i) => (
+                                      <li key={i}>{d}</li>
+                                    )
+                                  )}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </CardContent>
+                      <CardFooter className="border-t border-slate-100 pt-6 flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setLoopStarted(false);
+                            setLoopState(null);
+                          }}
+                        >
+                          もう一度診断する
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={resetAll}
+                        >
+                          セッションを終了
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  )}
               </>
             )}
           </div>
@@ -814,71 +817,96 @@ export default function SessionPage() {
         {/* Input Area - 診断完了時は非表示 */}
         {!loopFinished && (
           <div className="border-t bg-background p-4">
-          <div className="mx-auto max-w-4xl">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
-                  submitCurrentAnswer(currentQuestion?.id);
-                }
-              }}
-              className="flex items-center gap-2"
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="shrink-0"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                  <path fillRule="evenodd" d="M18.97 3.659a2.25 2.25 0 00-3.182 0l-10.94 10.94a3.75 3.75 0 105.304 5.303l7.693-7.693a.75.75 0 011.06 1.06l-7.693 7.693a5.25 5.25 0 11-7.424-7.424l10.939-10.94a3.75 3.75 0 115.303 5.304L9.097 18.835l-.008.008-.007.007-.002.002-.003.002A2.25 2.25 0 015.91 15.66l7.81-7.81a.75.75 0 011.061 1.06l-7.81 7.81a.75.75 0 001.054 1.068L18.97 6.84a2.25 2.25 0 000-3.182z" clipRule="evenodd" />
-                </svg>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="shrink-0"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                  <path fillRule="evenodd" d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z" clipRule="evenodd" />
-                </svg>
-              </Button>
-              <Input
-                ref={messageInputRef}
-                value={answerInput}
-                onChange={(e) => setAnswerInput(e.target.value)}
-                placeholder={
-                  loopBusy
-                    ? "処理中です..."
-                    : !currentQuestion?.id
-                    ? "次の質問を読み込んでいます..."
-                    : "回答を入力してください..."
-                }
-                disabled={loopBusy || !currentQuestion?.id}
-                className="flex-1"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
+            <div className="mx-auto max-w-4xl">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!loopBusy && currentQuestion?.id && answerInput.trim()) {
+                    submitCurrentAnswer(currentQuestion?.id);
                   }
                 }}
-              />
-              <Button
-                type="submit"
-                size="icon"
-                disabled={loopBusy || !currentQuestion?.id || !answerInput.trim()}
-                className="shrink-0 bg-chat-send hover:bg-chat-send/90"
+                className="flex items-center gap-2"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                </svg>
-              </Button>
-            </form>
-            {loopError && (
-              <p className="mt-2 text-sm text-destructive">{loopError}</p>
-            )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-5 w-5"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18.97 3.659a2.25 2.25 0 00-3.182 0l-10.94 10.94a3.75 3.75 0 105.304 5.303l7.693-7.693a.75.75 0 011.06 1.06l-7.693 7.693a5.25 5.25 0 11-7.424-7.424l10.939-10.94a3.75 3.75 0 115.303 5.304L9.097 18.835l-.008.008-.007.007-.002.002-.003.002A2.25 2.25 0 015.91 15.66l7.81-7.81a.75.75 0 011.061 1.06l-7.81 7.81a.75.75 0 001.054 1.068L18.97 6.84a2.25 2.25 0 000-3.182z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-5 w-5"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </Button>
+                <Input
+                  ref={messageInputRef}
+                  value={answerInput}
+                  onChange={(e) => setAnswerInput(e.target.value)}
+                  placeholder={
+                    loopBusy
+                      ? "処理中です..."
+                      : !currentQuestion?.id
+                      ? "次の質問を読み込んでいます..."
+                      : "回答を入力してください..."
+                  }
+                  disabled={loopBusy || !currentQuestion?.id}
+                  className="flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                    }
+                  }}
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={
+                    loopBusy || !currentQuestion?.id || !answerInput.trim()
+                  }
+                  className="shrink-0 bg-chat-send hover:bg-chat-send/90"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-5 w-5"
+                  >
+                    <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                  </svg>
+                </Button>
+              </form>
+              {loopError && (
+                <p className="mt-2 text-sm text-destructive">{loopError}</p>
+              )}
+            </div>
           </div>
-        </div>
         )}
       </div>
     );

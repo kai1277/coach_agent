@@ -209,36 +209,6 @@ async function fetchLastAnswerTurn(session_id: string) {
   return data[0];
 }
 
-
-/** JSONB content に undo=true を立てて更新（論理Undo） */
-async function markTurnUndo(turn_id: string, content: any) {
-  const newContent = { ...(content ?? {}), undo: true };
-  const { error } = await supabase
-    .from('turns')
-    .update({ content: newContent })
-    .eq('id', turn_id);
-  if (error) console.warn('[markTurnUndo] update failed', error.message);
-}
-
-function loadLoopState(meta: any) {
-  const asked = Number(meta?.loop?.progressAsked ?? 0);
-  const recentTexts: string[] = Array.isArray(meta?.loop_state?.recentTexts) ? meta.loop_state.recentTexts : [];
-  const loopCfg = {
-    threshold: Number(meta?.loop?.threshold ?? 0.9),
-    maxQuestions: Number(meta?.loop?.maxQuestions ?? 8),
-    minQuestions: Number(meta?.loop?.minQuestions ?? 0),
-  };
-  return { asked, recentTexts, loopCfg };
-}
-
-async function saveLoopState(sessionId: string, updater: (meta: any) => any) {
-  const cur = await supabase.from('sessions').select('metadata').eq('id', sessionId).single();
-  const meta = (cur.data?.metadata ?? {});
-  const next = updater(meta);
-  await supabase.from('sessions').update({ metadata: next }).eq('id', sessionId);
-  return next;
-}
-
 /* ========== Embedding helper ========== */
 async function embedText(text: string): Promise<number[]> {
   const emb = await openai.embeddings.create({
