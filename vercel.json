@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://coach-api-distribute.onrender.com/:path*"
+      "destination": "https://coach-api-distribute.onrender.com/api/:path*"
     }
   ]
 }
