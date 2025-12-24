@@ -9,9 +9,8 @@ import type {
   User,
 } from "../types/api";
 
-const API_MODE = (import.meta as any).env?.VITE_API_MODE ?? "mock"; // 'mock' | 'real'
-const API_BASE =
-  API_MODE === "real" ? (import.meta as any).env?.VITE_API_BASE_URL ?? "" : "";
+// 環境変数があればそれを使用、なければ /api（Viteプロキシ経由）
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "/api";
 
 /**
  * 生の fetch を返す薄いラッパー
